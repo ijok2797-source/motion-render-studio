@@ -128,10 +128,7 @@ export function LoopBadge({ loop }: { loop: LoopCheck }) {
 }
 
 const FORMATS: { id: ExportFormat; label: string; desc: string }[] = [
-    { id: 'mp4', label: 'MP4', desc: 'H.264, paling kompatibel' },
-    { id: 'webm', label: 'WebM', desc: 'VP9, mendukung alpha' },
-    { id: 'gif', label: 'GIF', desc: 'Animasi loop ringan' },
-    { id: 'png', label: 'PNG sequence', desc: 'ZIP berisi frame' },
+    { id: 'mp4', label: 'MP4', desc: 'H.264, paling kompatibel untuk microstock dan semua pemutar' },
 ];
 
 export function ExportPanel({ s, set }: Props) {
@@ -144,14 +141,18 @@ export function ExportPanel({ s, set }: Props) {
     return (
         <div className="panel">
             <h3>Format export</h3>
-            <div className="formats" role="radiogroup" aria-label="Format export">
+            <div className="fmt-one">
+                <b>MP4</b>
+                <span>{supported('mp4') ? 'H.264, paling kompatibel untuk microstock dan semua pemutar' : 'Browser ini tidak mendukung encoder MP4. Coba Chrome atau Edge versi terbaru.'}</span>
+            </div>
+            {false && <div className="formats" role="radiogroup" aria-label="Format export">
                 {FORMATS.map((f) => (
                     <button key={f.id} role="radio" aria-checked={format === f.id} className={`fmt ${format === f.id ? 'on' : ''}`} onClick={() => setFormat(f.id)}>
                         <b>{f.label}</b>
                         <span>{supported(f.id) ? f.desc : 'Tidak didukung browser ini'}</span>
                     </button>
                 ))}
-            </div>
+            </div>}
             {(format === 'mp4' || format === 'webm') && (
                 <div className="field">
                     <label className="check" style={{ marginBottom: 6 }}>
