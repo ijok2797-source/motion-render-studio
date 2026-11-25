@@ -1,9 +1,9 @@
 /* Build prompt
 Motion Render Studio — converts pasted HTML/CSS/JS motion code (CSS keyframes, GSAP, anime.js, Canvas) into video.
-Art direction: soft neumorphic hardware console (like a premium audio interface / camera control surface):
-one matte grey-blue body color (#e4e6ec light, #23262c dark) with raised panels and inset wells made of paired light/dark
-shadows, pill tab switches, pressed state for active controls, a single orange accent (#c2410c / #f0682a) for active
-state, playhead and render button; dark inset well for code. System sans for UI, monospace for code and timecode. Indonesian UI.
+Art direction: modern clean product UI (like a current video tool such as a web editor dashboard): light grey canvas
+(#f5f6f8) with white rounded panels, thin borders and soft elevation, segmented pill controls, a single orange accent
+(#c2410c) for active state, playhead and render button; dark well for code; full dark mode. System sans for UI,
+monospace for code and timecode. Indonesian UI.
 Layout: 3 columns: editor (HTML/CSS/JS tabs, line numbers, console of errors/logs) | live preview stage at true
 output aspect ratio with play/pause, restart, scrubber, timecode, frame counter, loop | side panel tabs Settings / Export.
 Features: aspect ratio presets + custom size, resolution 480p-4K, FPS 24-60, duration; background from code / color /
@@ -18,11 +18,18 @@ import { EditorPane } from './components/EditorPane';
 import { Preview } from './components/Preview';
 import { SettingsPanel } from './components/SettingsPanel';
 import { ExportPanel } from './components/ExportPanel';
+import { RenderQueue } from './components/RenderQueue';
+import { RenderButton } from './components/RenderButton';
+import { RenderProvider } from './lib/renderQueue';
 import { TEMPLATES } from './lib/templates';
+import { detectName, isRandomName, randomMotionName } from './lib/detectName';
 import type { Code, Log, Settings } from './lib/types';
 import { DEFAULT_SETTINGS } from './lib/types';
 import { CSS } from './styles.new';
 import { NEO_DARK } from './styles.neoDark';
+import { MODERN, stripNeo } from './styles.modern';
+import { PRO } from './styles.pro';
+import { INTERACTIVE } from './styles.interactive';
 
 const KEY = 'motion-render-studio-v1';
 
@@ -41,7 +48,7 @@ export const App = () => {
     const [init] = useState(loadSaved);
     const [code, setCode] = useState<Code>(init.code);
     const [settings, setSettings] = useState<Settings>(init.settings);
-    const [side, setSide] = useState<'settings' | 'export'>('settings');
+    const [side, setSide] = useState<'settings' | 'export' | 'queue'>('settings');
     const [logs, setLogs] = useState<Log[]>([]);
     const [reloadKey, setReloadKey] = useState(0);
     const [toast, setToast] = useState<{ msg: string; undo?: () => void } | null>(null);
@@ -64,6 +71,20 @@ export const App = () => {
     }, [code, settings]);
 
     useEffect(() => { setLogs([]); }, [code, reloadKey]);
+
+    // Automatic file name: name found in the code, otherwise "motion" + 10 random digits.
+    useEffect(() => {
+        if (!settings.fileNameAuto) return;
+        const t = setTimeout(() => {
+            const found = detectName(code);
+            setSettings((s) => {
+                if (!s.fileNameAuto) return s;
+                const next = found ?? (isRandomName(s.fileName) ? s.fileName : randomMotionName());
+                return next === s.fileName ? s : { ...s, fileName: next };
+            });
+        }, 400);
+        return () => clearTimeout(t);
+    }, [code, settings.fileNameAuto]);
 
     useEffect(() => {
         const on = (e: MessageEvent) => {
@@ -104,13 +125,20 @@ export const App = () => {
         setToast({ msg: 'Semua kode dikosongkan.', undo: () => setCode(prev) });
     };
 
-    const exportProject = async () => {
-        const blob = new Blob([JSON.stringify({ app: 'motion-render-studio', code, settings }, null, 2)], { type: 'application/json' });
-        try { await downloadFile(`${settings.fileName || 'motion'}.motion.json`, blob); } catch (e) { setToast({ msg: e instanceof Error ? e.message : 'Gagal menyimpan proyek.' }); }
-    };
+    const [dropping, setDropping] = useState(false);
 
     const importProject = (f: File | undefined) => {
         if (!f) return;
+        if (!/\.json$/i.test(f.name)) {
+            f.text().then((t) => {
+                const prev = code;
+                const isHtml = /^\s*</.test(t);
+                setCode(isHtml ? { html: t, css: '', js: '' } : /\.css$/i.test(f.name) ? { html: '', css: t, js: '' } : { html: '', css: '', js: t });
+                setSettings((s) => ({ ...s, fileNameAuto: true }));
+                setToast({ msg: `Kode dari ${f.name} dimuat.`, undo: () => setCode(prev) });
+            });
+            return;
+        }
         f.text().then((t) => {
             try {
                 const p = JSON.parse(t);
@@ -127,8 +155,15 @@ export const App = () => {
 
 
     return (
-        <div className={`app${dark ? ' dark' : ''}`}>
-            <style>{CSS + NEO_DARK}</style>
+        <RenderProvider>
+        <div
+            className={`app${dark ? ' dark' : ''}${dropping ? ' dropping' : ''}`}
+            onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDropping(true); } }}
+            onDragLeave={(e) => { if (e.currentTarget === e.target) setDropping(false); }}
+            onDrop={(e) => { e.preventDefault(); setDropping(false); importProject(e.dataTransfer.files?.[0]); }}
+        >
+            <style>{stripNeo(CSS) + MODERN + NEO_DARK + PRO + INTERACTIVE}</style>
+            {dropping && <div className="drop-hint" aria-hidden="true"><div>Lepaskan file .html, .js, atau .json untuk memuat kode</div></div>}
             <header className="top">
                 <div className="brand">
                     <div className="logo" aria-hidden="true">
@@ -155,12 +190,9 @@ export const App = () => {
                     <label className="secondary" style={{ cursor: 'pointer' }}>
                         <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 4.5v8h13v-7H8L6.5 4z" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" /></svg>
                         Buka
-                        <input type="file" accept=".json" style={{ display: 'none' }} onChange={(e) => { importProject(e.target.files?.[0]); e.target.value = ''; }} />
+                        <input type="file" accept=".json,.html,.htm,.js,.css,.txt" style={{ display: 'none' }} onChange={(e) => { importProject(e.target.files?.[0]); e.target.value = ''; }} />
                     </label>
-                    <button className="secondary" onClick={exportProject}>
-                        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8M4.5 6.5L8 10l3.5-3.5M2 13.5h12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                        Simpan proyek
-                    </button>
+                    <RenderButton code={code} s={settings} onQueued={() => { setSide('queue'); setToast({ msg: 'Ditambahkan ke antrian render.' }); }} />
                 </div>
             </header>
 
@@ -178,16 +210,18 @@ export const App = () => {
                 </section>
 
                 <section className="col col-preview" aria-label="Pratinjau">
-                    <Preview code={code} settings={settings} reloadKey={reloadKey} />
+                    <Preview code={code} settings={settings} reloadKey={reloadKey} set={set} />
                 </section>
 
                 <aside className="col col-side">
                     <div className="side-tabs" role="tablist">
                         <button role="tab" aria-selected={side === 'settings'} className={side === 'settings' ? 'on' : ''} onClick={() => setSide('settings')}>Pengaturan</button>
                         <button role="tab" aria-selected={side === 'export'} className={side === 'export' ? 'on' : ''} onClick={() => setSide('export')}>Export</button>
+                        <button role="tab" aria-selected={side === 'queue'} className={side === 'queue' ? 'on' : ''} onClick={() => setSide('queue')}>Antrian</button>
                     </div>
-                    <div style={{ display: side === 'settings' ? 'block' : 'none' }}><SettingsPanel s={settings} set={set} code={code} /></div>
-                    <div style={{ display: side === 'export' ? 'block' : 'none' }}><ExportPanel code={code} s={settings} set={set} /></div>
+                    <div className={side === 'settings' ? 'tab-pane on' : 'tab-pane'}><SettingsPanel s={settings} set={set} code={code} /></div>
+                    <div className={side === 'export' ? 'tab-pane on' : 'tab-pane'}><ExportPanel s={settings} set={set} /></div>
+                    <div className={side === 'queue' ? 'tab-pane on' : 'tab-pane'}><RenderQueue /></div>
                 </aside>
             </main>
 
@@ -198,6 +232,7 @@ export const App = () => {
                 </div>
             )}
         </div>
+        </RenderProvider>
     );
 };
 
