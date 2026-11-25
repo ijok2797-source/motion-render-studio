@@ -30,14 +30,27 @@ function fromCss(css: string): Detected | null {
 }
 
 function fromJs(js: string): Detected | null {
-    // time % N  /  ((time % N) + N) % N
-    const mod = new RegExp(`\\b${TIMEVAR}\\b\\s*\\)?\\s*%\\s*([\\d.]+)`, 'i').exec(js);
+    // Any time expression followed by a modulo: time % N, (ms / 1000) % 6, clock.getElapsedTime() % 10 ...
+    const mod = new RegExp(`(?:\\b${TIMEVAR}\\b|\\bms\\b|getElapsedTime\\(\\)|elapsedTime|\\/\\s*1000\\s*\\)|performance\\.now\\(\\)\\s*\\/\\s*1000\\s*\\)?)\\s*\\)?\\s*%\\s*([\\d.]+)`, 'i').exec(js);
     if (mod) {
         const n = parseFloat(mod[1]);
         if (n > 0 && n <= 600) {
-            const ms = /performance\.now|Date\.now/.test(js) && n >= 100;
+            const ms = /\bms\b|performance\.now|Date\.now/.test(mod[0]) && !/1000/.test(mod[0]) && n >= 100;
             return { seconds: ms ? n / 1000 : n, source: `loop "% ${mod[1]}" di kode` };
         }
+    }
+    // Named loop length constants: const DURATION = 8, LOOP_SECONDS = 12, loopDuration = 6, LOOP_MS = 6000
+    const named = /\b(?:const|let|var)\s+([A-Z][A-Z0-9_]*(?:DURATION|LOOP|PERIOD|CYCLE)[A-Z0-9_]*|(?:DURATION|LOOP|PERIOD|CYCLE)[A-Z0-9_]*|loopDuration|loopLength|loopSeconds|loopTime|cycleLength|animDuration|totalDuration)\s*=\s*([\d.]+)\b/.exec(js);
+    if (named) {
+        let n = parseFloat(named[2]);
+        if (/MS|Ms/.test(named[1])) n = n / 1000;
+        if (n > 0 && n <= 300) return { seconds: n, source: `konstanta ${named[1]} di kode` };
+    }
+    // Normalised progress: t / 6, time / 15 used as 0..1 loop fraction
+    const frac = new RegExp(`\\b${TIMEVAR}\\b\\s*\\/\\s*([\\d.]+)\\s*\\*\\s*(?:Math\\.PI|TAU|PI2)`, 'i').exec(js);
+    if (frac) {
+        const n = parseFloat(frac[1]);
+        if (n > 0 && n <= 300) return { seconds: n, source: 'siklus putaran di kode' };
     }
     // GSAP: duration: N / repeat cycles via timeline totals are hard; take largest duration+delay
     const gsap = [...js.matchAll(/duration\s*:\s*([\d.]+)/g)].map((m) => parseFloat(m[1]));
@@ -60,8 +73,8 @@ export function detectDuration(code: Code): Detected | null {
     const all = code.html + '\n' + code.css + '\n' + code.js;
     const styleBlocks = [...all.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]).join('\n');
     const scriptBlocks = [...all.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)].map((m) => m[1]).join('\n');
-    const js = code.js + '\n' + scriptBlocks + '\n' + (/<script/i.test(code.html) ? '' : '');
-    const d = fromJs(js) ?? fromJs(code.html) ?? fromCss(code.css + '\n' + styleBlocks);
+    const js = code.js + '\n' + scriptBlocks;
+    const d = fromJs(js) ?? fromCss(code.css + '\n' + styleBlocks);
     if (!d) return null;
     const seconds = Math.round(d.seconds * 10) / 10;
     if (!(seconds > 0) || seconds > 300) return null;

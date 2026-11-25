@@ -140,4 +140,57 @@ function tick(t) {
 requestAnimationFrame(tick);`,
         },
     },
+    {
+        id: 'three',
+        name: 'Kubus 3D (Three.js)',
+        code: {
+            html: `<canvas id="c"></canvas>`,
+            css: `body { margin: 0; background: #0d1117; }
+canvas { display: block; width: 100%; height: 100%; }`,
+            js: `// Three.js sudah tersedia sebagai THREE, tanpa CDN.
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(1);
+renderer.setSize(innerWidth, innerHeight, false);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#0d1117');
+const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.1, 100);
+camera.position.set(0, 1.2, 6);
+camera.lookAt(0, 0, 0);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.35));
+const key = new THREE.DirectionalLight(0xffffff, 1.6);
+key.position.set(3, 4, 5);
+scene.add(key);
+const rim = new THREE.PointLight(0xff7a2f, 30, 20);
+rim.position.set(-3, 1, -2);
+scene.add(rim);
+
+const cube = new THREE.Mesh(
+  new THREE.BoxGeometry(1.6, 1.6, 1.6),
+  new THREE.MeshStandardMaterial({ color: '#f2aa4c', roughness: 0.35, metalness: 0.2 })
+);
+scene.add(cube);
+
+const ring = new THREE.Mesh(
+  new THREE.TorusGeometry(2.4, 0.04, 16, 120),
+  new THREE.MeshStandardMaterial({ color: '#8fb0ff', emissive: '#28407a' })
+);
+ring.rotation.x = Math.PI / 2.4;
+scene.add(ring);
+
+// Loop 6 detik: semua rotasi kembali ke posisi awal.
+function frame(ms) {
+  const t = (ms / 1000) % 6;
+  const p = t / 6 * Math.PI * 2;
+  cube.rotation.set(p, p * 2, 0);
+  cube.position.y = Math.sin(p) * 0.25;
+  ring.rotation.z = p;
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);`,
+        },
+    },
 ];

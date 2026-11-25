@@ -4,7 +4,19 @@ import { GifEncoder } from './gif';
 import { makeZip } from './zip';
 import { FrameEncoder, webCodecsAvailable } from './encoder';
 import type { Code, ExportFormat, Settings } from './types';
-import { dims } from './types';
+import { dims, effectiveSS, renderRange } from './types';
+
+/** True when a captured frame has no visible pixels (canvas dropped by the GPU). */
+function isBlank(src: CanvasImageSource): boolean {
+    const c = document.createElement('canvas');
+    c.width = 48; c.height = 27;
+    const g = c.getContext('2d', { willReadFrequently: true });
+    if (!g) return false;
+    g.drawImage(src, 0, 0, 48, 27);
+    const d = g.getImageData(0, 0, 48, 27).data;
+    for (let i = 3; i < d.length; i += 4) if (d[i] > 8) return false;
+    return true;
+}
 
 export interface RenderProgress {
     phase: string;
@@ -27,6 +39,7 @@ export interface RenderResult {
     fps: number;
     width: number;
     height: number;
+    rateMode?: 'cbr' | 'vbr';
 }
 
 const THUMB_W = 96;
@@ -44,19 +57,45 @@ function diffPct(a: Uint8ClampedArray, b: Uint8ClampedArray): number {
     return (s / (a.length * 255)) * 100;
 }
 
-/** Fine monochrome film grain / dither (triangular noise) that breaks up gradient banding. amount in % (0-3). */
+/** Fine film grain / dither drawn by the GPU: a cached noise tile blended with 'overlay' at a random offset per frame. */
+let grainTile: HTMLCanvasElement | null = null;
+let grainAmount = -1;
 function applyGrain(ctx: CanvasRenderingContext2D, w: number, h: number, amount: number) {
-    const img = ctx.getImageData(0, 0, w, h);
-    const d = img.data;
-    const a = (amount / 100) * 255;
-    let seed = (Math.random() * 0x7fffffff) | 0;
-    for (let i = 0; i < d.length; i += 4) {
-        if (d[i + 3] === 0) continue;
-        seed = (Math.imul(seed, 1103515245) + 12345) & 0x7fffffff;
-        const n = ((seed & 0xffff) / 65535 + ((seed >>> 15) & 0xffff) / 65535 - 1) * a;
-        d[i] += n; d[i + 1] += n; d[i + 2] += n;
+    if (!grainTile || grainAmount !== amount) {
+        grainTile = document.createElement('canvas');
+        grainTile.width = grainTile.height = 256;
+        const g = grainTile.getContext('2d')!;
+        const img = g.createImageData(256, 256);
+        const a = (amount / 100) * 255; // overlay at mid-grey adds about the noise value itself
+        for (let i = 0; i < img.data.length; i += 4) {
+            const n = (Math.random() + Math.random() - 1) * a;
+            const v = Math.max(0, Math.min(255, 128 + n));
+            img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+            img.data[i + 3] = 255;
+        }
+        g.putImageData(img, 0, 0);
+        grainAmount = amount;
     }
-    ctx.putImageData(img, 0, 0);
+    const pat = ctx.createPattern(grainTile, 'repeat');
+    if (!pat) return;
+    const ox = Math.floor(Math.random() * 256), oy = Math.floor(Math.random() * 256);
+    ctx.save();
+    ctx.globalCompositeOperation = 'overlay';
+    ctx.translate(-ox, -oy);
+    ctx.fillStyle = pat;
+    ctx.fillRect(0, 0, w + 256, h + 256);
+    ctx.restore();
+}
+
+/** Draws the captured frame scaled around the center and shifted by the offset settings. */
+function placeFrame(g: CanvasRenderingContext2D, src: CanvasImageSource, w: number, h: number, s: Settings) {
+    const k = (s.zoom || 100) / 100;
+    const dw = w * k, dh = h * k;
+    const x = (w - dw) / 2 + ((s.offsetX || 0) / 100) * w;
+    const y = (h - dh) / 2 + ((s.offsetY || 0) / 100) * h;
+    g.imageSmoothingEnabled = true;
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(src, x, y, dw, dh);
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -97,12 +136,16 @@ export async function renderVideo(
     const { W, H } = dims(s);
     const isGif = format === 'gif';
     const fps = isGif ? s.gifFps : s.fps;
-    const total = Math.max(1, Math.round(s.duration * fps));
+    const range = renderRange(s);
+    const total = Math.max(1, Math.round(range.len * fps));
+    const startMs = range.start * 1000;
+    const blurN = Math.max(1, Math.min(16, Math.round(s.blurSamples || 1)));
+    const shutter = Math.max(0.05, Math.min(1, s.shutter || 0.5));
     const outW = isGif ? Math.max(2, Math.round(W * s.gifScale)) : W;
     const outH = isGif ? Math.max(2, Math.round(H * s.gifScale)) : H;
     const alpha = s.bgMode === 'transparent';
     // Supersampling factor, capped so the internal canvas stays within GPU limits (8192 px per side).
-    const ss = Math.max(1, Math.min(s.supersample || 1, Math.floor(8192 / Math.max(W, H)) || 1));
+    const ss = effectiveSS(W, H, s.supersample);
 
     const iframe = document.createElement('iframe');
     iframe.setAttribute('aria-hidden', 'true');
@@ -120,6 +163,8 @@ export async function renderVideo(
     if (!ctx) throw new Error('Canvas tidak tersedia di browser ini.');
     const tmp = document.createElement('canvas');
     const tctx = tmp.getContext('2d');
+    const blurC = document.createElement('canvas');
+    const bctx = blurC.getContext('2d');
 
     let recorder: MediaRecorder | null = null;
     let track: CanvasCaptureMediaStreamTrack | null = null;
@@ -127,6 +172,9 @@ export async function renderVideo(
     let mime = '';
     let note: string | undefined;
     let encoder: FrameEncoder | null = null;
+    let rateMode: 'cbr' | 'vbr' | undefined;
+    let blankFrames = 0;
+    let glLostFrames = 0;
 
     try {
         onProgress({ phase: 'Memuat kode', frame: 0, total });
@@ -138,8 +186,9 @@ export async function renderVideo(
         const pngs: { name: string; blob: Blob }[] = [];
 
         if (format === 'webm' || format === 'mp4') {
-            encoder = await FrameEncoder.create(format, outW, outH, fps, s.bitrate);
+            encoder = await FrameEncoder.create(format, outW, outH, fps, s.bitrate, s.bitrateMode === 'cbr');
             if (encoder) {
+                rateMode = encoder.usedMode === 'constant' ? 'cbr' : 'vbr';
                 if (alpha && format === 'mp4') note = 'MP4 (H.264) tidak mendukung transparansi, latar jadi hitam. Pakai PNG sequence untuk alpha.';
                 if (alpha && format === 'webm') note = 'Transparansi tidak disimpan di WebM. Pakai PNG sequence atau GIF untuk alpha.';
                 if (alpha) { ctx.fillStyle = '#000'; }
@@ -169,8 +218,61 @@ export async function renderVideo(
         let prevThumb: Uint8ClampedArray | null = null;
         for (let i = 0; i < total; i++) {
             if (isCancelled()) throw new Error('__cancel__');
-            const t = i * frameMs;
-            const img = await link.capture(t, outW, outH, s.capture, s.bgMode === 'code' ? codeBg : null, ss);
+            const t = startMs + i * frameMs;
+            // Phones can briefly lose the WebGL context on very large 3D canvases (4K):
+            // the frame comes back without the 3D objects, so wait for the GPU and redraw it.
+            const grab = async (tt: number) => {
+                for (let k = 0; ; k++) {
+                    try {
+                        return await link.capture(tt, outW, outH, s.capture, s.bgMode === 'code' ? codeBg : null, ss);
+                    } catch (e) {
+                        if (!(e instanceof Error) || e.message !== '__gllost__' || k >= 6) throw e;
+                        if (k === 0) glLostFrames++;
+                        await sleep(400);
+                    }
+                }
+            };
+            let img = await grab(t);
+            // A frame with no pixels at all means the GPU dropped the canvas: redraw and retry.
+            // Only check for a GPU-dropped blank frame when it can actually happen (very large canvases).
+            if (s.bgMode !== 'transparent' && outW * outH * ss * ss > 6_000_000) {
+                for (let k = 0; k < 3; k++) {
+                    let blank = false;
+                    if (img instanceof ImageData) {
+                        tmp.width = img.width; tmp.height = img.height; tctx?.putImageData(img, 0, 0); blank = isBlank(tmp);
+                    } else blank = isBlank(img);
+                    if (!blank) break;
+                    if (!(img instanceof ImageData)) img.close();
+                    await sleep(60);
+                    img = await link.capture(t + 0.01 * (k + 1), outW, outH, s.capture, s.bgMode === 'code' ? codeBg : null, ss);
+                    if (k === 2) blankFrames++;
+                }
+            }
+            // Motion blur: average extra sub-frames spread over the shutter interval.
+            let src: CanvasImageSource;
+            if (img instanceof ImageData) {
+                tmp.width = img.width; tmp.height = img.height;
+                tctx?.putImageData(img, 0, 0);
+                src = tmp;
+            } else src = img;
+            if (blurN > 1 && bctx) {
+                blurC.width = src === tmp ? tmp.width : (img as ImageBitmap).width;
+                blurC.height = src === tmp ? tmp.height : (img as ImageBitmap).height;
+                bctx.globalAlpha = 1;
+                bctx.clearRect(0, 0, blurC.width, blurC.height);
+                bctx.drawImage(src, 0, 0, blurC.width, blurC.height);
+                if (!(img instanceof ImageData)) img.close();
+                for (let k = 1; k < blurN; k++) {
+                    const sub = await grab(t + (k * frameMs * shutter) / blurN);
+                    let ssrc: CanvasImageSource;
+                    if (sub instanceof ImageData) { tmp.width = sub.width; tmp.height = sub.height; tctx?.putImageData(sub, 0, 0); ssrc = tmp; } else ssrc = sub;
+                    bctx.globalAlpha = 1 / (k + 1);
+                    bctx.drawImage(ssrc, 0, 0, blurC.width, blurC.height);
+                    if (!(sub instanceof ImageData)) sub.close();
+                }
+                bctx.globalAlpha = 1;
+                src = blurC;
+            }
 
             ctx.clearRect(0, 0, outW, outH);
             if (s.bgMode === 'color') {
@@ -185,14 +287,8 @@ export async function renderVideo(
                 ctx.fillStyle = '#000';
                 ctx.fillRect(0, 0, outW, outH);
             }
-            if (img instanceof ImageData) {
-                tmp.width = img.width; tmp.height = img.height;
-                tctx?.putImageData(img, 0, 0);
-                ctx.drawImage(tmp, 0, 0, outW, outH);
-            } else {
-                ctx.drawImage(img, 0, 0, outW, outH);
-                img.close();
-            }
+            placeFrame(ctx, src, outW, outH, s);
+            if (src !== tmp && src !== blurC) (img as ImageBitmap).close();
 
             if (i === 0) firstThumb = thumb(out, outW, outH);
             if (i === total - 1) prevThumb = thumb(out, outW, outH);
@@ -227,12 +323,12 @@ export async function renderVideo(
                 const g2 = c2.getContext('2d')!;
                 if (s.bgMode === 'code') { g2.fillStyle = codeBg; g2.fillRect(0, 0, outW, outH); }
                 else if (s.bgMode === 'color') { g2.fillStyle = s.bgColor; g2.fillRect(0, 0, outW, outH); }
-                g2.drawImage(src, 0, 0, outW, outH);
+                placeFrame(g2, src, outW, outH, s);
                 if (!(im instanceof ImageData)) im.close();
                 return thumb(c2, outW, outH);
             };
             if (!firstThumb || !prevThumb) throw new Error('no frames');
-            const endT = total * frameMs;
+            const endT = startMs + total * frameMs;
             const after = await raw(endT);
             const diff = diffPct(firstThumb, after);
             const stepDiff = diffPct(prevThumb, after);
@@ -241,7 +337,9 @@ export async function renderVideo(
         } catch { /* loop check is optional */ }
 
         onProgress({ phase: 'Menyusun file', frame: total, total });
-        const meta = { loop, frames: total, fps, width: outW, height: outH };
+        if (glLostFrames > 0) note = (note ? note + ' ' : '') + `GPU sempat kehabisan memori di ${glLostFrames} frame dan frame itu digambar ulang. Kalau objek 3D masih berkedip, render 4K di laptop/PC atau pakai 1080p.`;
+        if (blankFrames > 0) note = (note ? note + ' ' : '') + `${blankFrames} frame tetap kosong setelah dicoba ulang. Perangkat kehabisan memori grafis: matikan anti-alias atau turunkan resolusi, lalu render ulang.`;
+        const meta = { loop, frames: total, fps, width: outW, height: outH, rateMode };
         if (gif) return { blob: gif.finish(), ext: 'gif', ...meta };
         if (format === 'png') return { blob: await makeZip(pngs), ext: 'zip', ...meta };
         if (encoder) return { blob: await encoder.finish(), ext: format, note, ...meta };

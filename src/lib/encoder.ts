@@ -95,17 +95,20 @@ export function webCodecsAvailable(): boolean {
     return typeof window !== 'undefined' && 'VideoEncoder' in window && 'VideoFrame' in window;
 }
 
-async function pickConfig(format: 'mp4' | 'webm', w: number, h: number, fps: number, bitrate: number) {
+async function pickConfig(format: 'mp4' | 'webm', w: number, h: number, fps: number, bitrate: number, cbr: boolean) {
     const cands = format === 'mp4'
         ? [['avc1.640033', ''], ['avc1.640028', ''], ['avc1.4d0033', ''], ['avc1.42003e', '']]
         : [['vp09.00.51.08', 'V_VP9'], ['vp09.00.41.08', 'V_VP9'], ['vp8', 'V_VP8']];
-    for (const [codec, mkv] of cands) {
-        const cfg: VideoEncoderConfig = { codec, width: w, height: h, bitrate, framerate: fps, latencyMode: 'quality' };
-        if (format === 'mp4') (cfg as VideoEncoderConfig & { avc?: { format: string } }).avc = { format: 'avc' };
-        try {
-            const r = await VideoEncoder.isConfigSupported(cfg);
-            if (r.supported) return { cfg, mkv };
-        } catch { /* try next */ }
+    const modes: ('constant' | 'variable')[] = cbr ? ['constant', 'variable'] : ['variable'];
+    for (const mode of modes) {
+        for (const [codec, mkv] of cands) {
+            const cfg: VideoEncoderConfig = { codec, width: w, height: h, bitrate, framerate: fps, latencyMode: 'quality', bitrateMode: mode };
+            if (format === 'mp4') (cfg as VideoEncoderConfig & { avc?: { format: string } }).avc = { format: 'avc' };
+            try {
+                const r = await VideoEncoder.isConfigSupported(cfg);
+                if (r.supported) return { cfg, mkv, mode };
+            } catch { /* try next */ }
+        }
     }
     return null;
 }
@@ -125,12 +128,16 @@ export class FrameEncoder {
         this.h = even(h);
     }
 
-    static async create(format: 'mp4' | 'webm', w: number, h: number, fps: number, bitrateMbps: number): Promise<FrameEncoder | null> {
+    /** 'constant' or 'variable': the rate control mode the device actually accepted. */
+    usedMode: 'constant' | 'variable' = 'variable';
+
+    static async create(format: 'mp4' | 'webm', w: number, h: number, fps: number, bitrateMbps: number, cbr = false): Promise<FrameEncoder | null> {
         if (!webCodecsAvailable()) return null;
         const fe = new FrameEncoder(format, w, h, fps);
-        const pick = await pickConfig(format, fe.w, fe.h, fps, bitrateMbps * 1_000_000);
+        const pick = await pickConfig(format, fe.w, fe.h, fps, bitrateMbps * 1_000_000, cbr);
         if (!pick) return null;
         fe.mkv = pick.mkv;
+        fe.usedMode = pick.mode;
         fe.enc = new VideoEncoder({
             output: (chunk, meta) => {
                 const d = new Uint8Array(chunk.byteLength);

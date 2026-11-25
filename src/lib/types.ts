@@ -22,12 +22,26 @@ export interface Settings {
     capture: CaptureMode;
     bitrate: number;
     autoBitrate: boolean;
+    bitrateMode: 'vbr' | 'cbr';
     supersample: number;
     grain: number;
+    /** Animation scale inside the video, in percent (100 = original). */
+    zoom: number;
+    /** Horizontal / vertical offset of the animation, in percent of the frame size. */
+    offsetX: number;
+    offsetY: number;
+    /** Render only part of the timeline, in seconds. end <= 0 means "until the end". */
+    rangeStart: number;
+    rangeEnd: number;
+    /** Motion blur sub-frames per frame (1 = off) and shutter fraction of a frame (0..1). */
+    blurSamples: number;
+    shutter: number;
     gifScale: number;
     gifFps: number;
     dither: boolean;
     fileName: string;
+    /** True while the file name follows the code automatically; false once the user types their own. */
+    fileNameAuto: boolean;
 }
 
 export interface Log {
@@ -70,12 +84,21 @@ export const DEFAULT_SETTINGS: Settings = {
     capture: 'auto',
     bitrate: 8,
     autoBitrate: true,
+    bitrateMode: 'vbr',
     supersample: 2,
     grain: 1,
+    zoom: 100,
+    offsetX: 0,
+    offsetY: 0,
+    rangeStart: 0,
+    rangeEnd: 0,
+    blurSamples: 1,
+    shutter: 0.5,
     gifScale: 0.5,
     gifFps: 20,
     dither: true,
     fileName: 'motion',
+    fileNameAuto: true,
 };
 
 const even = (n: number) => Math.max(2, Math.round(n / 2) * 2);
@@ -87,6 +110,24 @@ export function dims(s: Settings): { W: number; H: number } {
     const r = RATIOS.find((x) => x.id === s.ratio) ?? RATIOS[0];
     if (r.w >= r.h) return { W: even((s.quality * r.w) / r.h), H: even(s.quality) };
     return { W: even(s.quality), H: even((s.quality * r.h) / r.w) };
+}
+
+/** Effective render range in seconds, clamped to the duration. */
+export function renderRange(s: Settings): { start: number; end: number; len: number } {
+    const start = Math.max(0, Math.min(s.duration - 0.05, s.rangeStart || 0));
+    const rawEnd = s.rangeEnd && s.rangeEnd > 0 ? s.rangeEnd : s.duration;
+    const end = Math.max(start + 0.05, Math.min(s.duration, rawEnd));
+    return { start, end, len: end - start };
+}
+
+/** Max internal canvas area (~16.7 MP). Larger canvases get dropped by phone GPUs and render blank. */
+export const MAX_CANVAS_AREA = 4096 * 4096;
+
+/** Supersampling factor actually used, limited by side length (8192) and total canvas area. */
+export function effectiveSS(W: number, H: number, req: number): number {
+    const bySide = Math.floor(8192 / Math.max(W, H));
+    const byArea = Math.floor(Math.sqrt(MAX_CANVAS_AREA / (W * H)));
+    return Math.max(1, Math.min(req || 1, bySide || 1, byArea || 1));
 }
 
 /** Bitrate (Mbps) tuned for stock-footage quality: ~0.2 bits per pixel per frame, 4K30 ≈ 50, 4K60 ≈ 100. */

@@ -1,5 +1,6 @@
 import type { BgMode, Code } from './types';
 import { FRAME_SHIM } from './frameShim';
+import { rewriteThree, threeHead, usesThree } from './three';
 import H2C_SRC from 'html2canvas/dist/html2canvas.min.js?raw';
 
 // Split tag names so the inlined bundle never contains a literal closing script tag.
@@ -35,7 +36,7 @@ void SHIM_JS;
 const looksHtml = (s: string) => /^\s*(<!doctype|<html|<head|<body|<div|<svg|<canvas|<style|<script|<section|<main|<span|<h1|<p[\s>])/i.test(s);
 
 /** Fixes code pasted into the wrong tab and reports blocked external resources. */
-function normalize(code: Code): { code: Code; warnings: string[] } {
+function normalize(code: Code): { code: Code; warnings: string[]; hasThree: boolean } {
     const warnings: string[] = [];
     let { html, css, js } = code;
     if (looksHtml(js)) {
@@ -61,20 +62,25 @@ function normalize(code: Code): { code: Code; warnings: string[] } {
         warnings.push('Kode berisi garis miring terbalik seperti \\[ \\] \\* \\` (biasanya karena disalin dari chat atau dokumen). Ini membuat kode error. Salin ulang dari file aslinya.');
     }
     const all = html + css + js;
-    const ext = [...all.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)].map((m) => m[1]).filter((u) => /^(https?:)?\/\//i.test(u));
+    const hasThree = usesThree(all);
+    if (hasThree) {
+        html = rewriteThree(html, warnings);
+        js = rewriteThree(js, warnings);
+    }
+    const ext = [...(html + css + js).matchAll(/<script[^>]+src=["']([^"']+)["']/gi)].map((m) => m[1]).filter((u) => /^(https?:)?\/\//i.test(u));
     ext.forEach((u) => warnings.push(`Library eksternal diblokir: ${u}. Paste isi file library ini langsung ke tab JS.`));
     if (/<link[^>]+href=["'](https?:)?\/\//i.test(all) || /@import\s+url\(["']?https?:/i.test(all)) warnings.push('Font atau CSS eksternal diblokir, tampilan bisa memakai font bawaan.');
-    if (/^\s*(import|export)\s/m.test(js) || /type=["']module["']/i.test(html)) warnings.push('Kode memakai import/export (module). Ubah jadi script biasa supaya bisa jalan.');
-    return { code: { html, css, js }, warnings };
+    if (/^\s*(import|export)\s/m.test(js) || /<script[^>]+type=["']module["'][^>]*>[\s\S]*?^\s*(import|export)\s/im.test(html)) warnings.push('Kode memakai import/export (module). Ubah jadi script biasa supaya bisa jalan.');
+    return { code: { html, css, js }, warnings, hasThree };
 }
 
 export function buildDoc(rawCode: Code, bgMode: BgMode, withRenderer = false, ss = 1): string {
-    const { code, warnings } = normalize(rawCode);
+    const { code, warnings, hasThree } = normalize(rawCode);
     const warnJs = warnings.length ? `${SO}(function(){var w=${JSON.stringify(warnings)};w.forEach(function(m){console.warn(m)})})();${SC}` : '';
     const base = `html,body{margin:0;width:100%;height:100%;overflow:hidden}`;
     const override = bgMode !== 'code' ? `html,body{background:transparent !important}` : '';
     const h2c = withRenderer ? `${SO}${H2C_SRC.replace(/<\/script/gi, '<\\/script')}${SC}` : '';
-    const head = h2c + `${SO}window.__motionSS=${Math.max(1, Math.min(4, ss))};${SC}` + `${SO}${FRAME_SHIM}${SC}` + warnJs + `<style>${base}${override}</style>`;
+    const head = h2c + `${SO}window.__motionSS=${Math.max(1, Math.min(4, ss))};${SC}` + `${SO}${FRAME_SHIM}${SC}` + (hasThree ? threeHead() : '') + warnJs + `<style>${base}${override}</style>`;
     const userCss = code.css.trim() ? `<style>${code.css}</style>` : '';
     // Auto-runner: if the code only defines draw(ctx, time, width, height) (time in seconds),
     // create a full-size canvas and call it every frame.
