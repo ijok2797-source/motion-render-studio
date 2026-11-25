@@ -1,17 +1,19 @@
-import { useEffect, useRef, useState } from 'react';
-import { downloadFile } from '../lib/download';
-import { pickVideoMime, renderVideo } from '../lib/renderer.new';
-import type { LoopCheck, RenderProgress } from '../lib/renderer.new';
+import { useEffect, useState } from 'react';
+import { pickVideoMime } from '../lib/renderer.new';
+import { useRender } from '../lib/renderQueue';
+import type { LoopCheck } from '../lib/renderer.new';
 import type { Code, ExportFormat, Settings } from '../lib/types';
-import { autoBitrate, dims, formatBytes } from '../lib/types';
+import { autoBitrate, dims, formatBytes, renderRange } from '../lib/types';
+import { isRandomName } from '../lib/detectName';
+import { RenderOptions } from './RenderOptions';
 
 interface Props {
-    code: Code;
+    code?: Code;
     s: Settings;
     set: (p: Partial<Settings>) => void;
 }
 
-interface Result {
+export interface Result {
     url: string;
     blob: Blob;
     name: string;
@@ -23,6 +25,8 @@ interface Result {
     fps: number;
     width: number;
     height: number;
+    rateMode?: 'cbr' | 'vbr';
+    wantCbr?: boolean;
 }
 
 export function fmtDur(ms: number): string {
@@ -70,7 +74,7 @@ function Row({ k, v, ok }: { k: string; v: string; ok?: boolean | null }) {
     );
 }
 
-function ResultDetails({ result, targetMbps }: { result: Result; targetMbps: number }) {
+export function ResultDetails({ result, targetMbps }: { result: Result; targetMbps: number }) {
     const [p, setP] = useState<Probe | null | 'loading'>('loading');
     useEffect(() => { let on = true; probeMedia(result).then((x) => on && setP(x)); return () => { on = false; }; }, [result]);
     const expectDur = result.frames / result.fps;
@@ -86,17 +90,27 @@ function ResultDetails({ result, targetMbps }: { result: Result; targetMbps: num
             <Row k="Durasi" v={`${dur.toFixed(2)} dtk`} ok={probe ? Math.abs(probe.duration - expectDur) < 0.15 : null} />
             <Row k="Frame rate" v={`${result.fps} fps · ${result.frames} frame`} />
             <Row k="Codec" v={codec} />
-            {isVideo && <Row k="Bitrate rata-rata" v={`${mbps.toFixed(1)} Mbps (target ${targetMbps})`} ok={mbps >= targetMbps * 0.4} />}
+            {isVideo && <Row k="Mode bitrate" v={result.rateMode === 'cbr' ? 'CBR (konstan)' : result.rateMode === 'vbr' ? 'VBR (variabel)' : 'Rekaman real-time'} ok={result.wantCbr ? result.rateMode === 'cbr' : null} />}
+            {isVideo && <Row k="Bitrate rata-rata" v={`${mbps.toFixed(1)} Mbps (target ${targetMbps})`} ok={result.rateMode === 'cbr' ? mbps >= targetMbps * 0.75 : null} />}
             <Row k="Ukuran" v={formatBytes(result.blob.size)} />
-            {isVideo && mbps < targetMbps * 0.4 && (
-                <p className="hint warn" style={{ marginTop: 6 }}>Bitrate jauh di bawah target. Encoder di perangkat ini membatasinya, atau animasinya sangat sederhana sehingga mudah dikompres. Kalau gambar terlihat blur atau kotak-kotak, render di laptop/PC.</p>
+            {isVideo && result.wantCbr && result.rateMode !== 'cbr' && (
+                <p className="hint warn" style={{ marginTop: 6 }}>Browser atau encoder di perangkat ini tidak mendukung CBR, jadi render memakai VBR. Untuk bitrate konstan, render di Chrome/Edge di laptop atau PC.</p>
+            )}
+            {isVideo && result.rateMode === 'cbr' && mbps >= targetMbps * 0.75 && (
+                <p className="hint ok" style={{ marginTop: 6 }}>Bitrate sesuai target.</p>
+            )}
+            {isVideo && result.rateMode === 'cbr' && mbps < targetMbps * 0.75 && (
+                <p className="hint warn" style={{ marginTop: 6 }}>CBR menghasilkan sekitar {Math.round(mbps)} Mbps, jauh di bawah target. Encoder di perangkat ini kemungkinan tidak benar-benar menjalankan CBR. Coba render ulang dengan VBR, yang di banyak HP justru menghasilkan bitrate lebih tinggi. Kalau gambar terlihat tajam dan tidak kotak-kotak, file ini tetap aman dipakai.</p>
+            )}
+            {isVideo && result.rateMode !== 'cbr' && !result.wantCbr && mbps < targetMbps * 0.4 && (
+                <p className="hint" style={{ marginTop: 6 }}>Pada VBR, encoder hanya memakai data sesuai kebutuhan, dan encoder HP biasanya punya batas maksimal. Bitrate rendah wajar untuk animasi sederhana. Kalau gambar terlihat tajam dan tidak kotak-kotak, file ini aman dipakai. Untuk bitrate lebih tinggi, render di laptop atau PC.</p>
             )}
             {probe === null && p !== 'loading' && isVideo && <p className="hint" style={{ marginTop: 6 }}>File tidak bisa dibaca ulang oleh browser ini, nilai di atas berasal dari setting render.</p>}
         </div>
     );
 }
 
-function LoopBadge({ loop }: { loop: LoopCheck }) {
+export function LoopBadge({ loop }: { loop: LoopCheck }) {
     const map = {
         seamless: { cls: 'loop ok', title: 'Loop mulus', desc: 'Frame terakhir menyambung ke frame pertama. Aman diputar berulang.' },
         near: { cls: 'loop near', title: 'Loop hampir mulus', desc: 'Ada sedikit lompatan saat video diulang. Coba sesuaikan durasi dengan siklus animasi.' },
@@ -120,89 +134,24 @@ const FORMATS: { id: ExportFormat; label: string; desc: string }[] = [
     { id: 'png', label: 'PNG sequence', desc: 'ZIP berisi frame' },
 ];
 
-export function ExportPanel({ code, s, set }: Props) {
-    const [format, setFormat] = useState<ExportFormat>('mp4');
-    const [busy, setBusy] = useState(false);
-    const [prog, setProg] = useState<RenderProgress | null>(null);
-    const [err, setErr] = useState<string | null>(null);
-    const [result, setResult] = useState<Result | null>(null);
-    const cancel = useRef(false);
-    const host = useRef<HTMLDivElement>(null);
+export function ExportPanel({ s, set }: Props) {
+    const { format, setFormat, enqueue, active } = useRender();
     const { W, H } = dims(s);
     const effBitrate = s.autoBitrate ? autoBitrate(W, H, s.fps) : s.bitrate;
-    const startAt = useRef(0);
-    const firstFrameAt = useRef<{ frame: number; at: number } | null>(null);
-    const [now, setNow] = useState(0);
-
-    useEffect(() => {
-        if (!busy) return;
-        const id = setInterval(() => setNow(performance.now()), 500);
-        return () => clearInterval(id);
-    }, [busy]);
-
-    useEffect(() => () => { if (result) URL.revokeObjectURL(result.url); }, [result]);
-
     const supported = (f: ExportFormat) => (f === 'mp4' || f === 'webm' ? !!pickVideoMime(f, false) : true);
-
-    const start = async () => {
-        if (!host.current) return;
-        setErr(null);
-        setBusy(true);
-        cancel.current = false;
-        const t0 = performance.now();
-        startAt.current = t0;
-        firstFrameAt.current = null;
-        setNow(t0);
-        const onProg = (p: RenderProgress) => {
-            if (p.phase === 'Merender frame' && p.frame === 1) firstFrameAt.current = { frame: 1, at: performance.now() };
-            setProg(p);
-        };
-        try {
-            const r = await renderVideo(code, { ...s, bitrate: effBitrate }, format, host.current, onProg, () => cancel.current);
-            const name = `${s.fileName || 'motion'}_${W}x${H}.${r.ext}`;
-            if (result) URL.revokeObjectURL(result.url);
-            setResult({ url: URL.createObjectURL(r.blob), blob: r.blob, name, format, note: r.note, ms: performance.now() - t0, loop: r.loop, frames: r.frames, fps: r.fps, width: r.width, height: r.height });
-        } catch (e) {
-            const m = e instanceof Error ? e.message : String(e);
-            if (m !== '__cancel__') setErr(m);
-        } finally {
-            setBusy(false);
-            setProg(null);
-        }
-    };
-
-    const save = async () => {
-        if (!result) return;
-        try {
-            await downloadFile(result.name, result.blob);
-        } catch (e) {
-            setErr(e instanceof Error ? e.message : String(e));
-        }
-    };
-
-    const pct = prog ? Math.round((prog.frame / prog.total) * 100) : 0;
-    const elapsed = busy ? now - startAt.current : 0;
-    let eta: number | null = null;
-    if (busy && prog && prog.phase === 'Merender frame' && prog.frame >= 3 && firstFrameAt.current) {
-        const done = prog.frame - firstFrameAt.current.frame;
-        const spent = now - firstFrameAt.current.at;
-        if (done > 0 && spent > 0) eta = ((prog.total - prog.frame) * spent) / done + 1500;
-    } else if (busy && prog && prog.phase !== 'Merender frame' && prog.frame === prog.total) {
-        eta = 2000;
-    }
+    void enqueue; void active;
 
     return (
         <div className="panel">
             <h3>Format export</h3>
             <div className="formats" role="radiogroup" aria-label="Format export">
                 {FORMATS.map((f) => (
-                    <button key={f.id} role="radio" aria-checked={format === f.id} className={`fmt ${format === f.id ? 'on' : ''}`} onClick={() => setFormat(f.id)} disabled={busy}>
+                    <button key={f.id} role="radio" aria-checked={format === f.id} className={`fmt ${format === f.id ? 'on' : ''}`} onClick={() => setFormat(f.id)}>
                         <b>{f.label}</b>
                         <span>{supported(f.id) ? f.desc : 'Tidak didukung browser ini'}</span>
                     </button>
                 ))}
             </div>
-
             {(format === 'mp4' || format === 'webm') && (
                 <div className="field">
                     <label className="check" style={{ marginBottom: 6 }}>
@@ -210,7 +159,7 @@ export function ExportPanel({ code, s, set }: Props) {
                     </label>
                     <label htmlFor="br">Bitrate: {effBitrate} Mbps{s.autoBitrate ? ' (otomatis)' : ''}</label>
                     <input id="br" type="range" min={1} max={100} value={effBitrate} disabled={s.autoBitrate} onChange={(e) => set({ bitrate: Number(e.target.value) })} />
-                    <p className="hint">Perkiraan ukuran: {formatBytes((effBitrate * 1_000_000 * s.duration) / 8)}. Untuk microstock 4K, pakai 50–100 Mbps.</p>
+                    <p className="hint">Ukuran maksimal: {formatBytes((effBitrate * 1_000_000 * renderRange(s).len) / 8)}. Untuk microstock 4K, pakai 50–100 Mbps.</p>
                 </div>
             )}
             {format === 'gif' && (
@@ -237,52 +186,22 @@ export function ExportPanel({ code, s, set }: Props) {
                 </>
             )}
 
+            <RenderOptions s={s} set={set} />
+
             <div className="field">
                 <label htmlFor="fn">Nama file</label>
-                <input id="fn" value={s.fileName} onChange={(e) => set({ fileName: e.target.value.replace(/[^\w\- ]/g, '') })} />
+                <input id="fn" value={s.fileName} onChange={(e) => set({ fileName: e.target.value.replace(/[^\p{L}\p{N}_\- ]/gu, ''), fileNameAuto: false })} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span className="hint" style={{ margin: 0, flex: 1 }}>
+                        {s.fileNameAuto
+                            ? (isRandomName(s.fileName) ? 'Nama tidak terdeteksi dari kode, jadi dipakai nama acak.' : 'Nama otomatis dari kode.')
+                            : 'Nama diisi manual.'}
+                    </span>
+                    {!s.fileNameAuto && <button className="ghost sm" onClick={() => set({ fileNameAuto: true })}>Pakai nama otomatis</button>}
+                </div>
             </div>
 
-            {!busy ? (
-                <button className="primary" onClick={start} disabled={!supported(format)}>Render video</button>
-            ) : (
-                <div className="progress">
-                    <div className="progress-top">
-                        <span>{prog?.phase ?? 'Menyiapkan'} {prog && prog.frame > 0 && prog.phase === 'Merender frame' ? `${prog.frame}/${prog.total}` : ''}</span>
-                        <span>{pct}%</span>
-                    </div>
-                    <div className="bar" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}><div style={{ width: `${pct}%` }} /></div>
-                    <div className="eta">
-                        <span>Berjalan {fmtDur(elapsed)}</span>
-                        <span>{eta === null ? 'Menghitung sisa waktu…' : `Sisa sekitar ${fmtDur(eta)}`}</span>
-                    </div>
-                    {eta !== null && <span className="hint" style={{ margin: 0 }}>Perkiraan selesai pukul {new Date(Date.now() + eta).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}. Jangan tutup atau pindah tab supaya render tidak melambat.</span>}
-                    <button className="secondary" onClick={() => (cancel.current = true)}>Batalkan</button>
-                </div>
-            )}
-
-            {err && <div className="error" role="alert"><b>Render gagal.</b> {err}</div>}
-
-            {result && !busy && (
-                <div className="result">
-                    <h3>Hasil render</h3>
-                    {result.format === 'png' ? (
-                        <p className="hint">Arsip ZIP berisi {Math.round(s.duration * s.fps)} frame PNG.</p>
-                    ) : result.format === 'gif' ? (
-                        <img className="result-media checker" src={result.url} alt="Hasil GIF" />
-                    ) : (
-                        <video className="result-media checker" src={result.url} controls loop muted autoPlay playsInline />
-                    )}
-                    <div className="result-meta">
-                        <span>{result.name}</span>
-                        <span>{formatBytes(result.blob.size)} · selesai dalam {fmtDur(result.ms)}</span>
-                    </div>
-                    <ResultDetails result={result} targetMbps={effBitrate} />
-                    {result.loop && <LoopBadge loop={result.loop} />}
-                    {result.note && <p className="hint warn">{result.note}</p>}
-                    <button className="primary" onClick={save}>Unduh file</button>
-                </div>
-            )}
-            <div ref={host} />
+            <p className="hint">Tekan Render di bagian atas untuk menambah video ke antrian. Hasil render ada di tab Antrian.</p>
         </div>
     );
 }

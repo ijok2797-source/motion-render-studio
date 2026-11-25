@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import type { BgMode, Code, Settings } from '../lib/types';
 import { detectDuration } from '../lib/detectDuration';
-import { FPS_OPTIONS, QUALITIES, RATIOS, dims } from '../lib/types';
+import { FPS_OPTIONS, QUALITIES, RATIOS, dims, effectiveSS } from '../lib/types';
 
 interface Props {
     s: Settings;
@@ -118,8 +118,8 @@ export function SettingsPanel({ s, set, code }: Props) {
                 </div>
                 <p className="hint">
                     Digambar {s.supersample}× lebih besar lalu diperkecil, sehingga tepi halus dan tidak berkedip.
-                    {s.supersample > 1 && Math.max(W, H) * s.supersample > 8192 && ` Untuk ${W}×${H}, faktor dibatasi ke ${Math.max(1, Math.floor(8192 / Math.max(W, H)))}× supaya tidak melebihi batas GPU.`}
-                    {s.supersample > 1 && ' Render sekitar ' + (s.supersample * s.supersample) + '× lebih lama.'}
+                    {s.supersample > 1 && effectiveSS(W, H, s.supersample) < s.supersample && ` Untuk ${W}×${H}, anti-alias ${effectiveSS(W, H, s.supersample) === 1 ? 'otomatis dimatikan' : `dibatasi ke ${effectiveSS(W, H, s.supersample)}×`} supaya memori grafis tidak habis dan frame tidak kosong. Resolusi 4K sudah cukup tajam tanpa anti-alias.`}
+                    {effectiveSS(W, H, s.supersample) > 1 && ' Render sekitar ' + (effectiveSS(W, H, s.supersample) ** 2) + '× lebih lama.'}
                 </p>
             </div>
             <div className="field">
