@@ -47,5 +47,5 @@ export const PRO = `
 .job-actions{display:flex;gap:6px;align-items:center}
 .app .primary.sm-btn{width:auto;height:30px;padding:0 14px;margin:0;font-size:12.5px;border-radius:8px}
 .job-body{display:flex;flex-direction:column;gap:8px}
-@media (max-width:760px){.render-btn{flex:1;justify-content:center}.pv-tc{font-size:17px}}
+@media (max-width:760px){.top-actions{flex-wrap:wrap}.render-btn{flex:1 1 100%;order:10;justify-content:center;height:42px;font-size:14.5px}.pv-tc{font-size:17px}}
 `;

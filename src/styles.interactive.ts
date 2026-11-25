@@ -16,6 +16,15 @@ export const INTERACTIVE = `
 @keyframes mrs-pulse{0%,100%{box-shadow:0 0 0 0 rgba(194,65,12,.35)}50%{box-shadow:0 0 0 6px rgba(194,65,12,0)}}
 @keyframes mrs-shine{from{transform:translateX(-100%)}to{transform:translateX(250%)}}
 
+.app .logo3d{width:44px;height:44px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 5px 8px rgba(225,29,116,.25))}
+.app.dark .logo3d{filter:drop-shadow(0 4px 10px rgba(255,106,43,.35))}
+.app .brand-text h1{font-size:21px;font-weight:800;letter-spacing:1.5px;line-height:1}
+.mrv-m{background:linear-gradient(135deg,#ffb547 0%,#ff6a2b 50%,#e11d74 100%);-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;font-weight:900;font-size:1.12em}
+.app .brand-text .sub{display:block!important;font-size:11.5px;color:var(--mute);margin-top:3px}
+.fmt-one{display:flex;flex-direction:column;gap:3px;padding:12px;border:1px solid var(--acc);border-radius:10px;background:var(--accbg);margin-bottom:14px}
+.fmt-one b{font-size:14px;color:var(--acc)}
+.fmt-one span{font-size:12px;color:var(--ink2)}
+@media (prefers-reduced-motion:no-preference){.app .logo3d svg{transition:transform .4s cubic-bezier(.2,.8,.2,1)}.app .brand:hover .logo3d svg{transform:rotate(-18deg) scale(1.06)}}
 .tab-pane{display:none}.tab-pane.on{display:block}
 
 /* tactile buttons */

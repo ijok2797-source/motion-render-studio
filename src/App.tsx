@@ -21,6 +21,7 @@ import { ExportPanel } from './components/ExportPanel';
 import { RenderQueue } from './components/RenderQueue';
 import { RenderButton } from './components/RenderButton';
 import { RenderProvider } from './lib/renderQueue';
+import { FilmLogo } from './components/FilmLogo';
 import { TEMPLATES } from './lib/templates';
 import { detectName, isRandomName, randomMotionName } from './lib/detectName';
 import type { Code, Log, Settings } from './lib/types';
@@ -38,7 +39,7 @@ function loadSaved(): { code: Code; settings: Settings } {
         const raw = localStorage.getItem(KEY);
         if (raw) {
             const p = JSON.parse(raw);
-            return { code: p.code, settings: { ...DEFAULT_SETTINGS, ...p.settings, capture: 'auto' } };
+            return { code: p.code, settings: { ...DEFAULT_SETTINGS, ...p.settings, capture: 'auto', offsetX: 0, offsetY: 0 } };
         }
     } catch { /* ignore */ }
     return { code: TEMPLATES[0].code, settings: DEFAULT_SETTINGS };
@@ -145,7 +146,7 @@ export const App = () => {
                 if (!p.code) throw new Error();
                 const prev = { code, settings };
                 setCode({ html: p.code.html ?? '', css: p.code.css ?? '', js: p.code.js ?? '' });
-                setSettings({ ...DEFAULT_SETTINGS, ...p.settings, capture: 'auto' });
+                setSettings({ ...DEFAULT_SETTINGS, ...p.settings, capture: 'auto', offsetX: 0, offsetY: 0 });
                 setToast({ msg: `Proyek ${f.name} dibuka.`, undo: () => { setCode(prev.code); setSettings(prev.settings); } });
             } catch {
                 setToast({ msg: 'File proyek tidak valid.' });
@@ -166,12 +167,10 @@ export const App = () => {
             {dropping && <div className="drop-hint" aria-hidden="true"><div>Lepaskan file .html, .js, atau .json untuk memuat kode</div></div>}
             <header className="top">
                 <div className="brand">
-                    <div className="logo" aria-hidden="true">
-                        <svg width="16" height="16" viewBox="0 0 16 16"><path d="M5 3.5l8 4.5-8 4.5z" fill="#fff" /><rect x="1.5" y="3" width="2" height="10" rx="1" fill="#fdba74" /></svg>
-                    </div>
+                    <div className="logo3d"><FilmLogo size={40} /></div>
                     <div className="brand-text">
-                        <h1>Motion Render Studio</h1>
-                        <span className="sub">Kode HTML, CSS, JS jadi video siap pakai</span>
+                        <h1 className="mrv-title"><span className="mrv-m">M</span>RV</h1>
+                        <span className="sub">Motion Render Video</span>
                     </div>
                 </div>
                 <span className="spacer" />
