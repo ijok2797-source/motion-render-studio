@@ -54,7 +54,9 @@ export const useRender = () => {
 
 export function RenderProvider({ children }: { children: ReactNode }) {
     const [jobs, setJobs] = useState<Job[]>([]);
-    const [format, setFormat] = useState<ExportFormat>('mp4');
+    const [format, setFormatState] = useState<ExportFormat>('mp4');
+    const setFormat = (_f: ExportFormat) => setFormatState('mp4');
+    void setFormatState;
     const [selected, select] = useState<number | null>(null);
     const nextId = useRef(1);
     const cancelled = useRef(new Set<number>());
