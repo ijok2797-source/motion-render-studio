@@ -33,8 +33,8 @@ export function Preview({ code, settings, reloadKey, set }: Props) {
         ready.current = false;
         timeRef.current = 0;
         setTime(0);
-        if (iframe.current) iframe.current.srcdoc = buildDoc(code, settings.bgMode);
-    }, [code, settings.bgMode]);
+        if (iframe.current) iframe.current.srcdoc = buildDoc(code, settings.bgMode, false, 1, settings.duration, settings.fps);
+    }, [code, settings.bgMode, settings.duration, settings.fps]);
 
     useEffect(() => {
         const t = setTimeout(load, 350);
