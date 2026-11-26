@@ -1,7 +1,7 @@
 /** Simple 3D logo: an extruded gradient tile with a raised play button and film-strip holes. Reads well on light and dark. */
 export function FilmLogo({ size = 40 }: { size?: number }) {
     return (
-        <svg width={size} height={size} viewBox="0 0 64 64" role="img" aria-label="MRV">
+        <svg width={size} height={size} viewBox="0 0 64 64" role="img" aria-label="MIV">
             <defs>
                 <linearGradient id="mrv-top" x1="0" y1="0" x2="1" y2="1">
                     <stop offset="0" stopColor="#ffb547" />

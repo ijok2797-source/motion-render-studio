@@ -1,5 +1,6 @@
-import { useRef } from 'react';
+import { useDeferredValue, useMemo, useRef } from 'react';
 import type { Lang } from '../lib/types';
+import { highlight } from '../lib/highlight';
 
 interface Props {
     lang: Lang;
@@ -16,7 +17,10 @@ const PH: Record<Lang, string> = {
 export function CodeEditor({ lang, value, onChange }: Props) {
     const ta = useRef<HTMLTextAreaElement>(null);
     const gutter = useRef<HTMLDivElement>(null);
+    const pre = useRef<HTMLPreElement>(null);
     const lines = value.split('\n').length;
+    const deferred = useDeferredValue(value);
+    const html = useMemo(() => highlight(deferred, lang), [deferred, lang]);
 
     const onKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         const el = e.currentTarget;
@@ -47,18 +51,26 @@ export function CodeEditor({ lang, value, onChange }: Props) {
                     <div key={i}>{i + 1}</div>
                 ))}
             </div>
-            <textarea
-                ref={ta}
-                aria-label={`Kode ${lang.toUpperCase()}`}
-                spellCheck={false}
-                value={value}
-                placeholder={PH[lang]}
-                onChange={(e) => onChange(e.target.value)}
-                onKeyDown={onKey}
-                onScroll={(e) => {
-                    if (gutter.current) gutter.current.scrollTop = e.currentTarget.scrollTop;
-                }}
-            />
+            <div className="code-wrap">
+                <pre className="code-hl" ref={pre} aria-hidden="true" dangerouslySetInnerHTML={{ __html: html }} />
+                <textarea
+                    ref={ta}
+                    className="code-ta"
+                    aria-label={`Kode ${lang.toUpperCase()}`}
+                    spellCheck={false}
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    value={value}
+                    placeholder={PH[lang]}
+                    onChange={(e) => onChange(e.target.value)}
+                    onKeyDown={onKey}
+                    onScroll={(e) => {
+                        const t = e.currentTarget;
+                        if (gutter.current) gutter.current.scrollTop = t.scrollTop;
+                        if (pre.current) { pre.current.scrollTop = t.scrollTop; pre.current.scrollLeft = t.scrollLeft; }
+                    }}
+                />
+            </div>
         </div>
     );
 }

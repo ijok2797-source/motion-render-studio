@@ -1,3 +1,4 @@
+import { PixelIcon } from './PixelIcon';
 import { useRender } from '../lib/renderQueue';
 import { pickVideoMime } from '../lib/renderer.new';
 import type { Code, ExportFormat, Settings } from '../lib/types';
@@ -17,8 +18,8 @@ export function RenderButton({ code, s, onQueued }: { code: Code; s: Settings; o
             title={ok ? `Render ${LABEL[format]}` : 'Format ini tidak didukung browser'}
             onClick={() => { enqueue(code, s); onQueued(); }}
         >
-            <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="currentColor" /></svg>
-            <span>Render {LABEL[format]}</span>
+            <PixelIcon name="render" />
+            <span>Render {format === 'mp4' && s.container === 'mov' ? 'MOV' : LABEL[format]}</span>
             {active && <span className="render-badge">{pct}%{waiting > 0 ? ` +${waiting}` : ''}</span>}
             {active && <i className="render-fill" style={{ width: `${pct}%` }} />}
         </button>

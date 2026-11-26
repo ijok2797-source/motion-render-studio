@@ -16,6 +16,8 @@ const BG: { id: BgMode; label: string }[] = [
     { id: 'transparent', label: 'Transparan' },
 ];
 
+const DURATIONS = [3, 4, 5, 6, 7, 8, 9, 10, 12, 15, 20, 25, 30, 45, 60];
+
 export function SettingsPanel({ s, set, code }: Props) {
     const { W, H } = dims(s);
     const detected = useMemo(() => detectDuration(code), [code]);
@@ -66,17 +68,22 @@ export function SettingsPanel({ s, set, code }: Props) {
                 </div>
             </div>
             <div className="field">
-                <label htmlFor="dur">Durasi (detik)</label>
-                <div className="slider-row">
-                    <input type="range" aria-label="Durasi slider" min={0.5} max={60} step={0.5} value={s.duration} onChange={(e) => set({ duration: Number(e.target.value) })} />
-                    <input id="dur" type="number" min={0.1} max={300} step={0.1} value={s.duration} onChange={(e) => set({ duration: Math.max(0.1, Number(e.target.value)) })} />
-                </div>
+                <label htmlFor="dur">Durasi</label>
+                <select id="dur" value={s.duration} onChange={(e) => set({ duration: Number(e.target.value), rangeStart: 0, rangeEnd: 0 })}>
+                    {[...new Set([...DURATIONS, s.duration])].sort((a, b) => a - b).map((d) => <option key={d} value={d}>{d} detik</option>)}
+                </select>
             </div>
             <p className="hint">Total {Math.round(s.duration * s.fps)} frame</p>
+            {(s.rangeStart > 0 || (s.rangeEnd > 0 && s.rangeEnd < s.duration)) && (
+                <div className="suggest" role="status">
+                    <span>Yang dirender hanya {(s.rangeStart || 0).toFixed(1)}–{(s.rangeEnd > 0 ? Math.min(s.rangeEnd, s.duration) : s.duration).toFixed(1)} detik (rentang di timeline).</span>
+                    <button className="secondary sm" onClick={() => set({ rangeStart: 0, rangeEnd: 0 })}>Render penuh</button>
+                </div>
+            )}
             {detected && Math.abs(detected.seconds - s.duration) > 0.05 && (
                 <div className="suggest" role="status">
                     <span>Durasi terdeteksi: <b>{detected.seconds} detik</b> dari {detected.source}.</span>
-                    <button className="secondary sm" onClick={() => set({ duration: detected.seconds })}>Pakai</button>
+                    <button className="secondary sm" onClick={() => set({ duration: detected.seconds, rangeStart: 0, rangeEnd: 0 })}>Pakai</button>
                 </div>
             )}
             {detected && Math.abs(detected.seconds - s.duration) <= 0.05 && (

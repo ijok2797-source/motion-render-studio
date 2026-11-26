@@ -1,3 +1,4 @@
+import { videoExt } from '../lib/toMov';
 import { useEffect, useState } from 'react';
 import { downloadFile } from '../lib/download';
 import { jobEta, useRender } from '../lib/renderQueue';
@@ -15,7 +16,7 @@ function JobRow({ j, now }: { j: Job; now: number }) {
     const pct = j.prog ? Math.round((j.prog.frame / j.prog.total) * 100) : j.status === 'done' ? 100 : 0;
     const eta = j.status === 'rendering' ? jobEta(j, now) : null;
     const open = selected === j.id;
-    const ext = j.format === 'png' ? 'zip' : j.format;
+    const ext = j.format === 'png' ? 'zip' : j.format === 'mp4' ? videoExt(j.settings) : j.format;
     const save = async () => {
         if (!j.blob) return;
         try { await downloadFile(`${j.name}.${ext}`, j.blob); } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }

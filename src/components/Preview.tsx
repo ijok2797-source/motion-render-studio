@@ -1,3 +1,4 @@
+import { PreviewGuides, PreviewTools, useGuides } from './PreviewTools';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { buildDoc } from '../lib/shim';
 import type { Code, Settings } from '../lib/types';
@@ -16,6 +17,9 @@ interface Props {
 export function Preview({ code, settings, reloadKey, set }: Props) {
     const [full, setFull] = useState(false);
     const { W, H } = dims(settings);
+    // Light preview: draw at most ~960px on the long side; the render itself stays at full resolution.
+    const PK = Math.min(1, 960 / Math.max(W, H));
+    const PW = Math.round(W * PK), PH = Math.round(H * PK);
     const durMs = settings.duration * 1000;
     const wrap = useRef<HTMLDivElement>(null);
     const iframe = useRef<HTMLIFrameElement>(null);
@@ -77,7 +81,7 @@ export function Preview({ code, settings, reloadKey, set }: Props) {
             const dt = Math.min(100, now - last);
             last = now;
             if (ready.current) {
-                const next = timeRef.current + dt;
+                const next = timeRef.current + dt * speedRef.current;
                 if (next >= durMs) {
                     if (loop) {
                         load();
@@ -154,6 +158,10 @@ export function Preview({ code, settings, reloadKey, set }: Props) {
         const id = setTimeout(() => setFlash(null), 450);
         return () => clearTimeout(id);
     }, [flash]);
+    const [guides, toggleGuide] = useGuides();
+    const [speed, setSpeed] = useState(1);
+    const speedRef = useRef(1);
+    speedRef.current = speed;
     const [hint, setHint] = useState(false);
 
     return (
@@ -173,7 +181,7 @@ export function Preview({ code, settings, reloadKey, set }: Props) {
                         <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
                     )}
                 </button>
-                <div className="stage" style={{ width: W * scale, height: H * scale, ...bgStyle }} onClick={() => { toggle(); setFlash(playing ? 'pause' : 'play'); }} onDoubleClick={() => setFull((f) => !f)}>
+                <div className={`stage${guides.checker ? ' pv-checker' : ''}`} style={{ width: W * scale, height: H * scale, ...(guides.checker ? {} : bgStyle) }} onClick={() => { toggle(); setFlash(playing ? 'pause' : 'play'); }} onDoubleClick={() => setFull((f) => !f)}>
                     {flash && (
                         <div className="stage-flash" aria-hidden="true">
                             {flash === 'play'
@@ -181,6 +189,7 @@ export function Preview({ code, settings, reloadKey, set }: Props) {
                                 : <svg width="28" height="28" viewBox="0 0 16 16"><rect x="4" y="3" width="3" height="10" fill="currentColor" /><rect x="9" y="3" width="3" height="10" fill="currentColor" /></svg>}
                         </div>
                     )}
+                    <PreviewGuides guides={guides} W={W} H={H} />
                     <iframe
                         ref={iframe}
                         title="Pratinjau animasi"
@@ -188,12 +197,14 @@ export function Preview({ code, settings, reloadKey, set }: Props) {
                         tabIndex={-1}
                         style={{
                             pointerEvents: 'none',
-                            width: W, height: H, border: 0, background: 'transparent', transformOrigin: '0 0',
-                            transform: `scale(${scale}) translate(${(settings.offsetX || 0) / 100 * W}px, ${(settings.offsetY || 0) / 100 * H}px) translate(${W / 2}px, ${H / 2}px) scale(${(settings.zoom || 100) / 100}) translate(${-W / 2}px, ${-H / 2}px)`,
+                            width: PW, height: PH, border: 0, background: 'transparent', transformOrigin: '0 0',
+                            transform: `scale(${scale / PK}) translate(${PW / 2}px, ${PH / 2}px) scale(${(settings.zoom || 100) / 100}) translate(${-PW / 2}px, ${-PH / 2}px)`,
                         }}
                     />
                 </div>
             </div>
+            <PreviewTools guides={guides} toggleGuide={toggleGuide} speed={speed} setSpeed={setSpeed}
+                onEnd={() => { seek(Math.max(0, durMs - 1000 / settings.fps)); setPlaying(false); }} onFull={() => setFull(!full)} />
             <Timeline
                 durMs={durMs}
                 timeMs={cur}

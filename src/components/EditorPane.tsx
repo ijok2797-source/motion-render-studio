@@ -1,6 +1,10 @@
+import { PixelIcon } from './PixelIcon';
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { CodeEditor } from './CodeEditor';
 import type { Code, Lang, Log } from '../lib/types';
+import { fixCode, formatCode } from '../lib/fixCode';
+import type { FixResult } from '../lib/fixCode';
 
 interface Props {
     code: Code;
@@ -41,12 +45,29 @@ export function EditorPane({ code, setCode, logs, clearLogs, onReload, onClear, 
     };
 
     const empty = !code.html.trim() && !code.css.trim() && !code.js.trim();
+    const [report, setReport] = useState<FixResult | null>(null);
+    const [prevCode, setPrevCode] = useState<Code | null>(null);
+    const curLang: Lang = split ? lang : (isHtml(simpleValue) ? 'html' : 'js');
+    const curValue = split ? code[lang] : simpleValue;
+    const apply = (v: string) => { if (split) setCode((c) => ({ ...c, [lang]: v })); else setSimple(v); };
+    const runFix = () => {
+        const r = fixCode(curValue, curLang);
+        setReport(r);
+        if (r.code !== curValue) { setPrevCode(code); apply(r.code); }
+        else setPrevCode(null);
+    };
+    const runFormat = () => {
+        const f = formatCode(curValue);
+        if (f === curValue) { notify('Indentasi sudah rapi.'); return; }
+        setPrevCode(code); apply(f);
+        setReport({ code: f, changes: ['Indentasi dirapikan.'], error: null });
+    };
+    const undo = () => { if (prevCode) { setCode(prevCode); setPrevCode(null); setReport(null); notify('Perubahan dibatalkan.'); } };
     const kind = !simpleValue.trim() ? '' : isHtml(simpleValue) ? 'HTML' : 'JavaScript';
     const lines = (split ? code[lang] : simpleValue).split('\n').length;
     const totalLines = [code.html, code.css, code.js].filter((x) => x.trim()).reduce((s, x) => s + x.split('\n').length, 0);
 
-    if (!open) {
-        return (
+    const collapsedBar = (
             <>
                 <div className="ed-collapsed">
                     <button className="ed-toggle" onClick={() => setOpen(true)} aria-expanded={false}>
@@ -56,14 +77,14 @@ export function EditorPane({ code, setCode, logs, clearLogs, onReload, onClear, 
                     </button>
                     <div className="ed-actions">
                         <button className="ghost" onClick={async () => { await paste(); }} title="Tempel dari clipboard" aria-label="Tempel">
-                            <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="3" width="10" height="11.5" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.4" /><rect x="5.5" y="1.5" width="5" height="3" rx="1" fill="#fff" stroke="currentColor" strokeWidth="1.4" /></svg>
+                            <PixelIcon name="paste" />
                             <span className="ghost-txt">Tempel</span>
                         </button>
                         <button className="ghost icon" onClick={onReload} aria-label="Muat ulang" title="Muat ulang">
-                            <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.6-3.7M13 2.5v3h-3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                            <PixelIcon name="reload" />
                         </button>
                         <button className={`ghost ${errCount ? 'err' : ''}`} onClick={() => { setOpen(true); setConsoleOpen(true); }} aria-label="Konsol">
-                            <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4l3.5 4-3.5 4M8 12.5h5.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                            <PixelIcon name="console" />
                             <span className="ghost-txt">Konsol</span>{logs.length > 0 && <span className={errCount ? 'badge' : 'badge soft-l'}>{errCount || logs.length}</span>}
                         </button>
                     </div>
@@ -75,11 +96,21 @@ export function EditorPane({ code, setCode, logs, clearLogs, onReload, onClear, 
                     </div>
                 )}
             </>
-        );
-    }
+    );
+    if (!open) return collapsedBar;
 
     return (
         <>
+        {collapsedBar}
+        {createPortal(
+        <div className="w95-overlay ed-overlay" role="dialog" aria-modal="true" aria-label="Editor kode" onKeyDown={(e) => { if (e.key === 'Escape') setOpen(false); }}>
+        <div className="w95-win ed-win">
+            <div className="w95-title">
+                <PixelIcon name="console" size={14} />
+                <span>Kode{kind ? ` - ${kind}` : ''} - MIV Editor</span>
+                <button className="w95-x" onClick={() => setOpen(false)} aria-label="Tutup editor">X</button>
+            </div>
+            <div className="ed-win-body">
             <div className="ed-bar">
                 <button className="ghost icon" onClick={() => setOpen(false)} aria-label="Sembunyikan editor" title="Sembunyikan editor" aria-expanded={true}>
                     <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6L8 10.5 12.5 6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -96,23 +127,42 @@ export function EditorPane({ code, setCode, logs, clearLogs, onReload, onClear, 
                     <span className="ed-label">Kode{kind && <span className="ed-kind">{kind}</span>}</span>
                 )}
                 <div className="ed-actions">
+                    <button className="ghost fix-btn" onClick={runFix} disabled={empty} title="Perbaiki kode otomatis">
+                        <PixelIcon name="fix" />
+                        <span className="ghost-txt">Perbaiki</span>
+                    </button>
+                    <button className="ghost icon" onClick={runFormat} disabled={empty} aria-label="Rapikan indentasi" title="Rapikan indentasi">
+                        <PixelIcon name="format" />
+                    </button>
                     <button className="ghost" onClick={paste} title="Tempel dari clipboard">
-                        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="3" width="10" height="11.5" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.4" /><rect x="5.5" y="1.5" width="5" height="3" rx="1" fill="#fff" stroke="currentColor" strokeWidth="1.4" /></svg>
+                        <PixelIcon name="paste" />
                         Tempel
                     </button>
                     <button className="ghost icon" onClick={onReload} aria-label="Muat ulang" title="Muat ulang">
-                        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.6-3.7M13 2.5v3h-3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                    </button>
-                    <button className="ghost icon" onClick={onClear} disabled={empty} aria-label="Kosongkan" title="Kosongkan">
-                        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.5h6.6L12 4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" /></svg>
+                        <PixelIcon name="reload" />
                     </button>
                 </div>
             </div>
 
             {split ? (
-                <CodeEditor lang={lang} value={code[lang]} onChange={(v) => setCode((c) => ({ ...c, [lang]: v }))} />
+                <CodeEditor lang={lang} value={code[lang]} onChange={(v) => { setReport(null); setCode((c) => ({ ...c, [lang]: v })); }} />
             ) : (
-                <CodeEditor lang="html" value={simpleValue} onChange={setSimple} />
+                <CodeEditor lang={isHtml(simpleValue) || !simpleValue.trim() ? 'html' : 'js'} value={simpleValue} onChange={(v) => { setReport(null); setSimple(v); }} />
+            )}
+
+            {report && (
+                <div className={`fix-report ${report.error ? 'bad' : 'ok'}`} role="status">
+                    <div className="fix-h">
+                        <b>{report.error ? 'Masih ada error' : report.changes.length ? 'Kode diperbaiki' : 'Tidak ditemukan masalah'}</b>
+                        <div style={{ display: 'flex', gap: 4 }}>
+                            {prevCode && <button className="ghost sm" onClick={undo}>Urungkan</button>}
+                            <button className="ghost sm" onClick={() => setReport(null)}>Tutup</button>
+                        </div>
+                    </div>
+                    {report.changes.length > 0 && <ul>{report.changes.map((c, i) => <li key={i}>{c}</li>)}</ul>}
+                    {report.error && <p>{report.error}</p>}
+                    {report.error && <p className="muted">Bagian ini tidak bisa diperbaiki otomatis. Cek baris yang disebut, atau salin ulang kode dari sumber aslinya.</p>}
+                </div>
             )}
 
             <div className="ed-foot">
@@ -120,7 +170,20 @@ export function EditorPane({ code, setCode, logs, clearLogs, onReload, onClear, 
                 <span className="spacer" />
                 <label className="check">
                     <input type="checkbox" checked={split} onChange={(e) => {
-                        if (!e.target.checked && code.css.trim()) { notify('Kosongkan tab CSS dulu, atau gabungkan ke HTML.'); return; }
+                        if (!e.target.checked && (code.css.trim() || (code.html.trim() && code.js.trim()))) {
+                            // Merge the three tabs into one HTML so nothing is lost.
+                            let h = code.html.trim() ? code.html : '<!DOCTYPE html>\n<html>\n<head>\n</head>\n<body>\n</body>\n</html>';
+                            if (code.css.trim()) {
+                                const st = '<style>\n' + code.css + '\n</style>\n';
+                                h = /<\/head>/i.test(h) ? h.replace(/<\/head>/i, st + '</head>') : st + h;
+                            }
+                            if (code.js.trim()) {
+                                const sc = '<script>\n' + code.js + '\n</' + 'script>\n';
+                                h = /<\/body>/i.test(h) ? h.replace(/<\/body>(?![\s\S]*<\/body>)/i, sc + '</body>') : h + '\n' + sc;
+                            }
+                            setCode({ html: h, css: '', js: '' });
+                            notify('HTML, CSS, dan JS digabung jadi satu kode HTML.');
+                        }
                         setSplit(e.target.checked);
                     }} /> Pisah HTML/CSS/JS
                 </label>
@@ -143,6 +206,16 @@ export function EditorPane({ code, setCode, logs, clearLogs, onReload, onClear, 
                     </div>
                 </div>
             )}
+            </div>
+            <div className="w95-btns ed-win-btns">
+                <button onClick={() => { setPrevCode(code); setReport(null); onClear(); }} disabled={empty} style={{ marginRight: 'auto' }}><PixelIcon name="trash" size={14} /> Hapus kode</button>
+                {prevCode && empty && <button onClick={undo}>Urungkan</button>}
+                <button onClick={onReload}>Terapkan</button>
+                <button className="w95-def" onClick={() => setOpen(false)}>Selesai</button>
+            </div>
+        </div>
+        </div>,
+        (document.querySelector('.app') as HTMLElement | null) ?? document.body)}
         </>
     );
 }

@@ -141,10 +141,16 @@ export function ExportPanel({ s, set }: Props) {
     return (
         <div className="panel">
             <h3>Format export</h3>
-            <div className="fmt-one">
-                <b>MP4</b>
-                <span>{supported('mp4') ? 'H.264, paling kompatibel untuk microstock dan semua pemutar' : 'Browser ini tidak mendukung encoder MP4. Coba Chrome atau Edge versi terbaru.'}</span>
+            <div className="formats" role="radiogroup" aria-label="Format export">
+                <button role="radio" aria-checked={s.container !== 'mov'} className={`fmt ${s.container !== 'mov' ? 'on' : ''}`} onClick={() => set({ container: 'mp4' })}>
+                    <b>MP4</b><span>H.264, paling kompatibel untuk microstock dan semua pemutar</span>
+                </button>
+                <button role="radio" aria-checked={s.container === 'mov'} className={`fmt ${s.container === 'mov' ? 'on' : ''}`} onClick={() => set({ container: 'mov' })}>
+                    <b>MOV</b><span>QuickTime H.264, untuk Premiere, After Effects, Final Cut</span>
+                </button>
             </div>
+            {!supported('mp4') && <p className="hint warn">Browser ini tidak mendukung encoder video. Coba Chrome atau Edge versi terbaru.</p>}
+            {s.container === 'mov' && <p className="hint">MOV di sini memakai H.264 tanpa transparansi. MOV ProRes atau dengan alpha belum bisa dibuat di browser.</p>}
             {false && <div className="formats" role="radiogroup" aria-label="Format export">
                 {FORMATS.map((f) => (
                     <button key={f.id} role="radio" aria-checked={format === f.id} className={`fmt ${format === f.id ? 'on' : ''}`} onClick={() => setFormat(f.id)}>
