@@ -31,6 +31,10 @@ import { NEO_DARK } from './styles.neoDark';
 import { MODERN, stripNeo } from './styles.modern';
 import { PRO } from './styles.pro';
 import { INTERACTIVE } from './styles.interactive';
+import { EDITOR } from './styles.editor';
+import { PixelIcon } from './components/PixelIcon';
+import { RenderDialog } from './components/RenderDialog';
+import { RETRO } from './styles.retro';
 
 const KEY = 'motion-render-studio-v1';
 
@@ -163,14 +167,14 @@ export const App = () => {
             onDragLeave={(e) => { if (e.currentTarget === e.target) setDropping(false); }}
             onDrop={(e) => { e.preventDefault(); setDropping(false); importProject(e.dataTransfer.files?.[0]); }}
         >
-            <style>{stripNeo(CSS) + MODERN + NEO_DARK + PRO + INTERACTIVE}</style>
+            <style>{stripNeo(CSS) + MODERN + NEO_DARK + PRO + INTERACTIVE + EDITOR + RETRO}</style>
             {dropping && <div className="drop-hint" aria-hidden="true"><div>Lepaskan file .html, .js, atau .json untuk memuat kode</div></div>}
             <header className="top">
                 <div className="brand">
                     <div className="logo3d"><FilmLogo size={40} /></div>
                     <div className="brand-text">
-                        <h1 className="mrv-title"><span className="mrv-m">M</span>RV</h1>
-                        <span className="sub">Motion Render Video</span>
+                        <h1 className="mrv-title"><span className="mrv-m">MI</span>V</h1>
+                        <span className="sub">Maxime Illust Video</span>
                     </div>
                 </div>
                 <span className="spacer" />
@@ -187,11 +191,11 @@ export const App = () => {
                         {TEMPLATES.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                     </select>
                     <label className="secondary" style={{ cursor: 'pointer' }}>
-                        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 4.5v8h13v-7H8L6.5 4z" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" /></svg>
+                        <PixelIcon name="open" />
                         Buka
                         <input type="file" accept=".json,.html,.htm,.js,.css,.txt" style={{ display: 'none' }} onChange={(e) => { importProject(e.target.files?.[0]); e.target.value = ''; }} />
                     </label>
-                    <RenderButton code={code} s={settings} onQueued={() => { setSide('queue'); setToast({ msg: 'Ditambahkan ke antrian render.' }); }} />
+                    <RenderButton code={code} s={settings} onQueued={() => { setSide('queue'); }} />
                 </div>
             </header>
 
@@ -223,6 +227,7 @@ export const App = () => {
                     <div className={side === 'queue' ? 'tab-pane on' : 'tab-pane'}><RenderQueue /></div>
                 </aside>
             </main>
+            <RenderDialog />
 
             {toast && (
                 <div className="toast" role="status">
