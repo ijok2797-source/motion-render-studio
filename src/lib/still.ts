@@ -14,7 +14,7 @@ export async function captureStill(code: Code, s: Settings, tMs: number, host: H
     host.appendChild(iframe);
     const link = new FrameLink(iframe);
     try {
-        await link.load(buildDoc(code, s.bgMode, true, ss));
+        await link.load(buildDoc(code, s.bgMode, true, ss, s.duration, s.fps));
         const codeBg = await link.codeBg();
         const img = await link.capture(tMs, W, H, s.capture, s.bgMode === 'code' ? codeBg : null, ss);
         const out = document.createElement('canvas');

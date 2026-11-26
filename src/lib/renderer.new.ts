@@ -178,7 +178,7 @@ export async function renderVideo(
 
     try {
         onProgress({ phase: 'Memuat kode', frame: 0, total });
-        await link.load(buildDoc(code, s.bgMode, true, ss));
+        await link.load(buildDoc(code, s.bgMode, true, ss, s.duration, fps));
         const codeBg = await link.codeBg();
         const bgImg = s.bgMode === 'image' && s.bgImage ? await loadImage(s.bgImage) : null;
 
