@@ -1,5 +1,6 @@
 // Bundled Three.js for 3D code: CDN/module imports are rewritten to use the built-in copy.
 import THREE_SRC from '../../node_modules/three/build/three.cjs?raw';
+import { addonScripts, rewriteAddonImports } from './threeModules';
 
 const SO = ['<', 'script>'].join('');
 const SC = ['</', 'script>'].join('');
@@ -9,10 +10,10 @@ export function usesThree(all: string): boolean {
 }
 
 /** Script tag defining window.THREE, plus a WebGL patch so frames can always be captured. */
-export function threeHead(): string {
+export function threeHead(addonKeys: string[] = []): string {
     const src = THREE_SRC.replace(/<\/script/gi, '<\\/script');
     const glPatch = `(function(){var g=HTMLCanvasElement.prototype.getContext;HTMLCanvasElement.prototype.getContext=function(t,o){if(/webgl/i.test(t)){o=Object.assign({},o||{},{preserveDrawingBuffer:true})}return g.call(this,t,o)}})();`;
-    return `${SO}${glPatch}${SC}${SO}(function(){var module={exports:{}};var exports=module.exports;\n${src}\n;window.THREE=module.exports;})();${SC}${SO}${ADDONS}${SC}`;
+    return `${SO}${glPatch}${SC}${SO}(function(){var module={exports:{}};var exports=module.exports;\n${src}\n;window.THREE=module.exports;})();${SC}${SO}${ADDONS}${SC}` + (addonKeys.length ? addonScripts(addonKeys).html : '');
 }
 
 // Built-in replacements for common Three.js addons, plus a harmless stub for the rest.
@@ -35,7 +36,7 @@ window.__threeAddon=function(n){return known[n]||(T[n]!==undefined?T[n]:Stub)};
 
 
 /** Removes CDN three script tags, import maps, and rewrites ES imports of three to window.THREE. */
-export function rewriteThree(code: string, warnings: string[]): string {
+export function rewriteThree(code: string, warnings: string[], addonKeysOut: string[] = []): string {
     let out = code;
     out = out.replace(/<script[^>]+src=["'][^"']*three[^"']*["'][^>]*>\s*<\/script>/gi, '');
     out = out.replace(/<script[^>]+type=["']importmap["'][^>]*>[\s\S]*?<\/script>/gi, '');
@@ -58,7 +59,14 @@ export function rewriteThree(code: string, warnings: string[]): string {
     out = out.replace(/import\s+\*\s+as\s+(\w+)\s+from\s+['"]three['"];?/g, 'const $1 = window.THREE;');
     out = out.replace(/import\s+\{([^}]+)\}\s+from\s+['"]three['"];?/g, (_m, names: string) => `const {${names.replace(/\s+as\s+/g, ': ')}} = window.THREE;`);
     out = out.replace(/import\s+\*\s+as\s+(\w+)\s+from\s+['"]https?:[^'"]*three[^'"]*\/build\/three[^'"]*['"];?/g, 'const $1 = window.THREE;');
-    out = out.replace(/import\s+([^;]*?)\s+from\s+['"][^'"]*(examples\/jsm|addons)[^'"]*['"];?/g, (_m, clause: string) => { addon = true; return addonDecl(clause); });
-    if (addon) warnings.push('Addon Three.js diganti versi bawaan: RoomEnvironment dan OrbitControls tersedia. Addon lain (misalnya GLTFLoader, EffectComposer) tidak aktif, jadi model atau efeknya tidak tampil.');
+    const keys: string[] = [];
+    out = rewriteAddonImports(out, keys);
+    void addonDecl; void addon;
+    if (keys.length) {
+        const { missing } = addonScripts(keys);
+        if (missing.length) warnings.push(`Addon Three.js belum tersedia: ${missing.join(', ')}. Bagian yang memakainya tidak akan tampil.`);
+        if (keys.some((k) => /Loader\.js$/.test(k) && !/FontLoader/.test(k))) warnings.push('Loader (misalnya GLTFLoader, RGBELoader) tersedia, tetapi file model/tekstur dari internet tetap diblokir. Pakai data yang ditulis langsung di kode, atau file data: URL.');
+    }
+    addonKeysOut.push(...keys);
     return out;
 }
