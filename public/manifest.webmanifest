@@ -1,6 +1,6 @@
 {
-  "name": "MRV - Motion Render Video",
-  "short_name": "MRV",
+  "name": "MIV - Maxime Illust Video",
+  "short_name": "MIV",
   "description": "Ubah kode animasi HTML, CSS, JS menjadi video MP4.",
   "start_url": "/",
   "scope": "/",
