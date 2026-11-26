@@ -27,7 +27,7 @@ function codeBg(){var b=getComputedStyle(document.body).backgroundColor,h=getCom
 function fail(id,e){parent.postMessage({__motion:1,type:'frameError',id:id,msg:(e&&e.message)||String(e)},'*')}
 var glLost=0;document.addEventListener('webglcontextlost',function(e){glLost++;try{e.preventDefault()}catch(x){}},true);
 function send(id,cv,mode){if(window.createImageBitmap){createImageBitmap(cv).then(function(b){parent.postMessage({__motion:1,type:'frame',id:id,mode:mode,bmp:b},'*',[b])},function(e){fail(id,e)})}else{var x=cv.getContext('2d').getImageData(0,0,cv.width,cv.height);parent.postMessage({__motion:1,type:'frame',id:id,mode:mode,img:x},'*')}}
-function capture(d){try{step(d.t)}catch(e){return fail(d.id,e)}if(window.__svgPending){window.__svgPending.then(function(){capture2(d)})}else capture2(d)}
+function capture(d){try{step(d.t)}catch(e){return fail(d.id,e)}if(window.__svgFlushNow){window.__svgFlushNow().then(function(){capture2(d)})}else capture2(d)}
 function capture2(d){var lost0=glLost;try{if(glLost!==lost0)return fail(d.id,{message:'__gllost__'});var mc=document.getElementById('__mc');var cv=mc||largest();var mode=d.mode==='auto'?(mc||(cv&&visibleCount()<=2)?'canvas':'dom'):d.mode;
 if(mode==='canvas'){if(!cv)return fail(d.id,{message:'Mode Canvas dipilih, tapi kode tidak punya elemen canvas.'});var o=document.createElement('canvas');o.width=d.w;o.height=d.h;var r=cv.getBoundingClientRect(),sx=d.w/innerWidth,sy=d.h/innerHeight;var oc=o.getContext('2d');oc.imageSmoothingEnabled=true;oc.imageSmoothingQuality='high';oc.drawImage(cv,r.left*sx,r.top*sy,r.width*sx,r.height*sy);if(glLost!==lost0)return fail(d.id,{message:'__gllost__'});send(d.id,o,mode);return}
 var ss=d.ss||1;

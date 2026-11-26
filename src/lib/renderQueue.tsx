@@ -1,3 +1,4 @@
+import { toMov } from './toMov';
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { renderVideo } from './renderer.new';
@@ -95,7 +96,8 @@ export function RenderProvider({ children }: { children: ReactNode }) {
             patch(next.id, extra);
         };
         renderVideo(next.code, next.settings, next.format, host.current, onProg, () => cancelled.current.has(next.id))
-            .then((r) => {
+            .then(async (r) => {
+                if (next.settings.container === 'mov' && r.blob) r = { ...r, blob: await toMov(r.blob) };
                 patch(next.id, {
                     status: 'done', url: URL.createObjectURL(r.blob), blob: r.blob, note: r.note, ms: performance.now() - t0,
                     loop: r.loop, frames: r.frames, rateMode: r.rateMode, prog: undefined, name: `${next.name}`,

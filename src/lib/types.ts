@@ -10,6 +10,7 @@ export interface Code {
 }
 
 export interface Settings {
+    container?: 'mp4' | 'mov';
     ratio: string;
     quality: number;
     customW: number;
