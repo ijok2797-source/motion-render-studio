@@ -25,7 +25,7 @@ import { FilmLogo } from './components/FilmLogo';
 import { TEMPLATES } from './lib/templates';
 import { detectName, isRandomName, randomMotionName } from './lib/detectName';
 import type { Code, Log, Settings } from './lib/types';
-import { DEFAULT_SETTINGS } from './lib/types';
+import { DEFAULT_SETTINGS, nameFromFileName } from './lib/types';
 import { CSS } from './styles.new';
 import { NEO_DARK } from './styles.neoDark';
 import { MODERN, stripNeo } from './styles.modern';
@@ -35,6 +35,7 @@ import { EDITOR } from './styles.editor';
 import { PixelIcon } from './components/PixelIcon';
 import { RenderDialog } from './components/RenderDialog';
 import { RETRO } from './styles.retro';
+import { LAYOUT } from './styles.layout';
 
 const KEY = 'motion-render-studio-v1';
 
@@ -124,8 +125,16 @@ export const App = () => {
         setToast({ msg: `Template "${tpl.name}" dimuat.`, undo: () => { setCode(prev.code); setSettings(prev.settings); } });
     };
 
+    const applyFileName = (fname: string) => {
+        const n = nameFromFileName(fname);
+        if (n) setSettings((s) => ({ ...s, fileName: n, fileNameAuto: false, nameFromFile: true }));
+        else setSettings((s) => ({ ...s, fileNameAuto: true, nameFromFile: false }));
+    };
+    const applyCodeName = () => setSettings((s) => (s.nameFromFile ? { ...s, fileNameAuto: true, nameFromFile: false } : s));
+
     const clearAll = () => {
         const prev = code;
+        applyCodeName();
         setCode({ html: '', css: '', js: '' });
         setToast({ msg: 'Semua kode dikosongkan.', undo: () => setCode(prev) });
     };
@@ -139,7 +148,7 @@ export const App = () => {
                 const prev = code;
                 const isHtml = /^\s*</.test(t);
                 setCode(isHtml ? { html: t, css: '', js: '' } : /\.css$/i.test(f.name) ? { html: '', css: t, js: '' } : { html: '', css: '', js: t });
-                setSettings((s) => ({ ...s, fileNameAuto: true }));
+                applyFileName(f.name);
                 setToast({ msg: `Kode dari ${f.name} dimuat.`, undo: () => setCode(prev) });
             });
             return;
@@ -167,7 +176,7 @@ export const App = () => {
             onDragLeave={(e) => { if (e.currentTarget === e.target) setDropping(false); }}
             onDrop={(e) => { e.preventDefault(); setDropping(false); importProject(e.dataTransfer.files?.[0]); }}
         >
-            <style>{stripNeo(CSS) + MODERN + NEO_DARK + PRO + INTERACTIVE + EDITOR + RETRO}</style>
+            <style>{stripNeo(CSS) + MODERN + NEO_DARK + PRO + INTERACTIVE + EDITOR + RETRO + LAYOUT}</style>
             {dropping && <div className="drop-hint" aria-hidden="true"><div>Lepaskan file .html, .js, atau .json untuk memuat kode</div></div>}
             <header className="top">
                 <div className="brand">
@@ -209,6 +218,8 @@ export const App = () => {
                         onReload={() => setReloadKey((k) => k + 1)}
                         onClear={clearAll}
                         notify={(m) => setToast({ msg: m })}
+                        onFileName={applyFileName}
+                        onPasted={applyCodeName}
                     />
                 </section>
 
