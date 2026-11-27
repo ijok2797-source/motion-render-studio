@@ -76,7 +76,7 @@ export function RenderProvider({ children }: { children: ReactNode }) {
             name: (s.fileName || 'motion').trim(),
             width: isGif ? Math.round(W * s.gifScale) : W, height: isGif ? Math.round(H * s.gifScale) : H,
             fps: isGif ? s.gifFps : s.fps, seconds: renderRange(s).len, targetMbps: mbps,
-            code, settings: { ...s, bitrate: mbps, bitrateMode: 'vbr' },
+            code, settings: { ...s, bitrate: mbps, bitrateMode: 'vbr', ...(s.container === 'mova' && format === 'mp4' ? { bgMode: 'transparent' as const } : {}) },
         };
         setJobs((js) => [...js, job]);
         select(id);
@@ -95,7 +95,7 @@ export function RenderProvider({ children }: { children: ReactNode }) {
             if (p.phase === 'Merender frame' && p.frame === 1) extra.firstFrameAt = { frame: 1, at: performance.now() };
             patch(next.id, extra);
         };
-        renderVideo(next.code, next.settings, next.format, host.current, onProg, () => cancelled.current.has(next.id))
+        renderVideo(next.code, next.settings, next.settings.container === 'mova' && next.format === 'mp4' ? 'png' : next.format, host.current, onProg, () => cancelled.current.has(next.id))
             .then(async (r) => {
                 if (next.settings.container === 'mov' && r.blob) r = { ...r, blob: await toMov(r.blob) };
                 patch(next.id, {

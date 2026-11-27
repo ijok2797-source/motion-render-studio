@@ -10,7 +10,7 @@ export interface Code {
 }
 
 export interface Settings {
-    container?: 'mp4' | 'mov';
+    container?: 'mp4' | 'mov' | 'mova';
     ratio: string;
     quality: number;
     customW: number;
@@ -43,6 +43,8 @@ export interface Settings {
     fileName: string;
     /** True while the file name follows the code automatically; false once the user types their own. */
     fileNameAuto: boolean;
+    /** Name was taken from an opened file. */
+    nameFromFile?: boolean;
 }
 
 export interface Log {
@@ -141,4 +143,9 @@ export function formatBytes(b: number): string {
     if (b < 1024) return `${b} B`;
     if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
     return `${(b / 1024 / 1024).toFixed(2)} MB`;
+}
+
+/** Video name from an opened file: "chip-ai.html" -> "chip-ai". Empty when nothing usable is left. */
+export function nameFromFileName(fileName: string): string {
+    return fileName.replace(/\.[^.]+$/, '').replace(/[^\p{L}\p{N}_\- ]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
 }

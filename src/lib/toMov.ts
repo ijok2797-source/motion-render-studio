@@ -16,4 +16,4 @@ export async function toMov(mp4: Blob): Promise<Blob> {
     return new Blob([box, mp4.slice(size)], { type: 'video/quicktime' });
 }
 
-export const videoExt = (s: { container?: 'mp4' | 'mov' } | undefined) => (s?.container === 'mov' ? 'mov' : 'mp4');
+export const videoExt = (s: { container?: 'mp4' | 'mov' | 'mova' } | undefined) => (s?.container === 'mov' || s?.container === 'mova' ? 'mov' : 'mp4');

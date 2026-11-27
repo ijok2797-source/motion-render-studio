@@ -2,6 +2,7 @@ import { buildDoc } from './shim';
 import { FrameLink } from './frameLink';
 import { GifEncoder } from './gif';
 import { makeZip } from './zip';
+import { makePngMov } from './movPng';
 import { FrameEncoder, webCodecsAvailable } from './encoder';
 import type { Code, ExportFormat, Settings } from './types';
 import { dims, effectiveSS, renderRange } from './types';
@@ -292,7 +293,7 @@ export async function renderVideo(
 
             if (i === 0) firstThumb = thumb(out, outW, outH);
             if (i === total - 1) prevThumb = thumb(out, outW, outH);
-            if (!gif && s.grain > 0) applyGrain(ctx, outW, outH, s.grain);
+            if (!gif && s.grain > 0 && !(format === 'png' && s.container === 'mova')) applyGrain(ctx, outW, outH, s.grain);
 
             if (gif) {
                 gif.addFrame(ctx.getImageData(0, 0, outW, outH).data, Math.max(2, Math.round(100 / fps)));
@@ -341,6 +342,10 @@ export async function renderVideo(
         if (blankFrames > 0) note = (note ? note + ' ' : '') + `${blankFrames} frame tetap kosong setelah dicoba ulang. Perangkat kehabisan memori grafis: matikan anti-alias atau turunkan resolusi, lalu render ulang.`;
         const meta = { loop, frames: total, fps, width: outW, height: outH, rateMode };
         if (gif) return { blob: gif.finish(), ext: 'gif', ...meta };
+        if (format === 'png' && s.container === 'mova') {
+            onProgress({ phase: 'Menyusun MOV transparan', frame: total, total });
+            return { blob: await makePngMov(pngs.map((p) => p.blob), outW, outH, fps), ext: 'mov', note, ...meta };
+        }
         if (format === 'png') return { blob: await makeZip(pngs), ext: 'zip', ...meta };
         if (encoder) return { blob: await encoder.finish(), ext: format, note, ...meta };
         note = (note ? note + ' ' : '') + 'Browser ini tidak mendukung encoder per-frame, jadi video direkam real-time. Durasi dan kehalusan bisa sedikit meleset.';
