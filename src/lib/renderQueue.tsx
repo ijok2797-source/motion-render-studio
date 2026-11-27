@@ -1,4 +1,13 @@
 import { toMov } from './toMov';
+
+/** Turns raw browser errors (often just "Type error" on iPad/iPhone) into an explanation with what to try. */
+function friendlyError(m: string): string {
+    if (m === '__cancel__') return m;
+    if (/^type ?error\.?$|__gllost__|context lost|out of memory|memory|allocation|createImageBitmap|VideoFrame/i.test(m.trim())) {
+        return 'Memori grafis perangkat habis saat merender. Ini sering terjadi untuk animasi 3D di iPad dan iPhone. Coba: tutup tab lain, pilih resolusi lebih kecil (1080p atau 720p), matikan anti-alias, atau pendekkan durasi. Untuk 4K, render di laptop/PC atau HP Android dengan Chrome.' + (m.trim() ? ` (Pesan browser: ${m.trim()})` : '');
+    }
+    return m;
+}
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { renderVideo } from './renderer.new';
@@ -104,7 +113,7 @@ export function RenderProvider({ children }: { children: ReactNode }) {
                 });
             })
             .catch((e) => {
-                const m = e instanceof Error ? e.message : String(e);
+                const m = friendlyError(e instanceof Error ? e.message : String(e));
                 patch(next.id, m === '__cancel__' ? { status: 'cancelled', prog: undefined } : { status: 'error', error: m, prog: undefined });
             })
             .finally(() => { running.current = false; setJobs((js) => [...js]); });
