@@ -4,6 +4,7 @@ import { buildDoc } from '../lib/shim';
 import type { Code, Settings } from '../lib/types';
 import { dims } from '../lib/types';
 import { ScaleBar } from './ScaleBar';
+import { useRender } from '../lib/renderQueue';
 import { StillButton } from './StillButton';
 import { Timeline, timecode } from './Timeline';
 
@@ -25,6 +26,7 @@ export function Preview({ code, settings, reloadKey, set }: Props) {
     const iframe = useRef<HTMLIFrameElement>(null);
     const [scale, setScale] = useState(0.3);
     const [playing, setPlaying] = useState(true);
+    const { active: rendering } = useRender();
     const [loop, setLoop] = useState(true);
     const [time, setTime] = useState(0);
     const timeRef = useRef(0);
@@ -44,6 +46,20 @@ export function Preview({ code, settings, reloadKey, set }: Props) {
         const t = setTimeout(load, 350);
         return () => clearTimeout(t);
     }, [load, reloadKey]);
+
+    // While a video renders, empty the preview so its 3D scene does not hold GPU memory at the same time.
+    const wasRendering = useRef(false);
+    useEffect(() => {
+        if (rendering) {
+            wasRendering.current = true;
+            setPlaying(false);
+            ready.current = false;
+            if (iframe.current) iframe.current.srcdoc = '<!DOCTYPE html><html><body style="margin:0;background:#000"></body></html>';
+        } else if (wasRendering.current) {
+            wasRendering.current = false;
+            load();
+        }
+    }, [rendering, load]);
 
     useEffect(() => {
         const el = wrap.current;
