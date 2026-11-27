@@ -142,15 +142,24 @@ export function ExportPanel({ s, set }: Props) {
         <div className="panel">
             <h3>Format export</h3>
             <div className="formats" role="radiogroup" aria-label="Format export">
-                <button role="radio" aria-checked={s.container !== 'mov'} className={`fmt ${s.container !== 'mov' ? 'on' : ''}`} onClick={() => set({ container: 'mp4' })}>
+                <button role="radio" aria-checked={!s.container || s.container === 'mp4'} className={`fmt ${!s.container || s.container === 'mp4' ? 'on' : ''}`} onClick={() => set({ container: 'mp4' })}>
                     <b>MP4</b><span>H.264, paling kompatibel untuk microstock dan semua pemutar</span>
                 </button>
                 <button role="radio" aria-checked={s.container === 'mov'} className={`fmt ${s.container === 'mov' ? 'on' : ''}`} onClick={() => set({ container: 'mov' })}>
                     <b>MOV</b><span>QuickTime H.264, untuk Premiere, After Effects, Final Cut</span>
                 </button>
+                <button role="radio" aria-checked={s.container === 'mova'} className={`fmt ${s.container === 'mova' ? 'on' : ''}`} onClick={() => set({ container: 'mova' })}>
+                    <b>MOV transparan</b><span>PNG dengan alpha, latar tembus pandang. File besar, render lebih lama</span>
+                </button>
             </div>
             {!supported('mp4') && <p className="hint warn">Browser ini tidak mendukung encoder video. Coba Chrome atau Edge versi terbaru.</p>}
-            {s.container === 'mov' && <p className="hint">MOV di sini memakai H.264 tanpa transparansi. MOV ProRes atau dengan alpha belum bisa dibuat di browser.</p>}
+            {s.container === 'mov' && <p className="hint">MOV ini memakai H.264 tanpa transparansi. Untuk latar tembus pandang, pilih MOV transparan.</p>}
+            {s.container === 'mova' && (
+                <p className="hint">
+                    Latar belakang otomatis dibuat transparan saat render, jadi hanya objek animasi yang tersimpan. Kalau kode menggambar latar sendiri (misalnya kotak atau warna penuh layar), latar itu tetap ikut. Cek dulu dengan tombol Transparan di pratinjau.
+                    Ukuran kira-kira {formatBytes(Math.round(W * H * 1.1 * renderRange(s).len * s.fps))} (perkiraan kasar, tergantung isi animasi). File bisa dibuka di After Effects, Premiere Pro, Final Cut Pro, DaVinci Resolve, dan VLC, tapi tidak bisa diputar di browser atau Galeri HP.
+                </p>
+            )}
             {false && <div className="formats" role="radiogroup" aria-label="Format export">
                 {FORMATS.map((f) => (
                     <button key={f.id} role="radio" aria-checked={format === f.id} className={`fmt ${format === f.id ? 'on' : ''}`} onClick={() => setFormat(f.id)}>
@@ -159,7 +168,7 @@ export function ExportPanel({ s, set }: Props) {
                     </button>
                 ))}
             </div>}
-            {(format === 'mp4' || format === 'webm') && (
+            {(format === 'mp4' || format === 'webm') && s.container !== 'mova' && (
                 <div className="field">
                     <label className="check" style={{ marginBottom: 6 }}>
                         <input type="checkbox" checked={s.autoBitrate} onChange={(e) => set({ autoBitrate: e.target.checked })} /> Bitrate otomatis sesuai resolusi dan FPS
@@ -197,14 +206,14 @@ export function ExportPanel({ s, set }: Props) {
 
             <div className="field">
                 <label htmlFor="fn">Nama file</label>
-                <input id="fn" value={s.fileName} onChange={(e) => set({ fileName: e.target.value.replace(/[^\p{L}\p{N}_\- ]/gu, ''), fileNameAuto: false })} />
+                <input id="fn" value={s.fileName} onChange={(e) => set({ fileName: e.target.value.replace(/[^\p{L}\p{N}_\- ]/gu, ''), fileNameAuto: false, nameFromFile: false })} />
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <span className="hint" style={{ margin: 0, flex: 1 }}>
                         {s.fileNameAuto
                             ? (isRandomName(s.fileName) ? 'Nama tidak terdeteksi dari kode, jadi dipakai nama acak.' : 'Nama otomatis dari kode.')
-                            : 'Nama diisi manual.'}
+                            : s.nameFromFile ? 'Nama dari file yang dibuka.' : 'Nama diisi manual.'}
                     </span>
-                    {!s.fileNameAuto && <button className="ghost sm" onClick={() => set({ fileNameAuto: true })}>Pakai nama otomatis</button>}
+                    {!s.fileNameAuto && <button className="ghost sm" onClick={() => set({ fileNameAuto: true, nameFromFile: false })}>Pakai nama dari kode</button>}
                 </div>
             </div>
 

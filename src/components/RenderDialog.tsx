@@ -111,10 +111,11 @@ export function RenderDialog() {
                             )}
                         </div>
                     </div>
-                    {ok && j.url && <video ref={vid} className="w95-video" src={j.url} loop muted playsInline controls />}
+                    {ok && j.url && j.settings.container === 'mova' && <p className="w95-info" style={{ marginTop: 10 }}>MOV transparan tidak bisa diputar di browser. Simpan, lalu buka di After Effects, Premiere Pro, Final Cut, DaVinci Resolve, atau VLC.</p>}
+                    {ok && j.url && j.settings.container !== 'mova' && <video ref={vid} className="w95-video" src={j.url} loop muted playsInline controls />}
                     {err && <p className="w95-err">{err}</p>}
                     <div className="w95-btns">
-                        {ok && <button onClick={() => { void vid.current?.play(); }}><PixelIcon name="play" size={14} /> Putar</button>}
+                        {ok && j.settings.container !== 'mova' && <button onClick={() => { void vid.current?.play(); }}><PixelIcon name="play" size={14} /> Putar</button>}
                         {ok && <button className="w95-def" onClick={save}><PixelIcon name="save" size={14} /> Simpan</button>}
                         {ok && <button onClick={share}><PixelIcon name="share" size={14} /> Bagikan</button>}
                         <button onClick={() => setDoneJob(null)}>{ok ? 'Tutup' : 'OK'}</button>

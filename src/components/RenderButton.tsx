@@ -19,7 +19,7 @@ export function RenderButton({ code, s, onQueued }: { code: Code; s: Settings; o
             onClick={() => { enqueue(code, s); onQueued(); }}
         >
             <PixelIcon name="render" />
-            <span>Render {format === 'mp4' && s.container === 'mov' ? 'MOV' : LABEL[format]}</span>
+            <span>Render {format === 'mp4' && (s.container === 'mov' || s.container === 'mova') ? 'MOV' : LABEL[format]}</span>
             {active && <span className="render-badge">{pct}%{waiting > 0 ? ` +${waiting}` : ''}</span>}
             {active && <i className="render-fill" style={{ width: `${pct}%` }} />}
         </button>

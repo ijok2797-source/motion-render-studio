@@ -47,7 +47,7 @@ function JobRow({ j, now }: { j: Job; now: number }) {
             </div>
             {open && j.status === 'done' && j.url && j.blob && (
                 <div className="job-body">
-                    {j.format === 'png' ? null : j.format === 'gif'
+                    {j.format === 'png' || j.settings.container === 'mova' ? (j.settings.container === 'mova' ? <p className="hint">MOV transparan tidak bisa diputar di browser. Unduh, lalu buka di After Effects, Premiere Pro, Final Cut, DaVinci Resolve, atau VLC.</p> : null) : j.format === 'gif'
                         ? <img className="result-media checker" src={j.url} alt="Hasil GIF" />
                         : <video className="result-media checker" src={j.url} controls loop muted autoPlay playsInline />}
                     <ResultDetails result={{ url: j.url, blob: j.blob, name: j.name, format: j.format, note: j.note, ms: j.ms ?? 0, loop: j.loop, frames: j.frames ?? 0, fps: j.fps, width: j.width, height: j.height, rateMode: j.rateMode, wantCbr: false }} targetMbps={j.targetMbps} />

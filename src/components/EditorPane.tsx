@@ -1,5 +1,5 @@
 import { PixelIcon } from './PixelIcon';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { CodeEditor } from './CodeEditor';
 import type { Code, Lang, Log } from '../lib/types';
@@ -14,11 +14,13 @@ interface Props {
     onReload: () => void;
     onClear: () => void;
     notify: (m: string) => void;
+    onFileName: (fileName: string) => void;
+    onPasted: () => void;
 }
 
 const isHtml = (s: string) => /^\s*</.test(s);
 
-export function EditorPane({ code, setCode, logs, clearLogs, onReload, onClear, notify }: Props) {
+export function EditorPane({ code, setCode, logs, clearLogs, onReload, onClear, notify, onFileName, onPasted }: Props) {
     const [split, setSplit] = useState(() => !!code.css.trim() || (!!code.html.trim() && !!code.js.trim()));
     const [lang, setLang] = useState<Lang>('html');
     const [consoleOpen, setConsoleOpen] = useState(false);
@@ -38,6 +40,7 @@ export function EditorPane({ code, setCode, logs, clearLogs, onReload, onClear, 
             if (!t.trim()) { notify('Clipboard kosong.'); return; }
             if (split) setCode((c) => ({ ...c, [lang]: t }));
             else setSimple(t);
+            onPasted();
             notify(`Kode ditempel (${t.split('\n').length} baris).`);
         } catch {
             notify('Browser tidak mengizinkan akses clipboard. Tekan lama di editor lalu pilih Tempel.');
@@ -61,6 +64,26 @@ export function EditorPane({ code, setCode, logs, clearLogs, onReload, onClear, 
         if (f === curValue) { notify('Indentasi sudah rapi.'); return; }
         setPrevCode(code); apply(f);
         setReport({ code: f, changes: ['Indentasi dirapikan.'], error: null });
+    };
+    const fileInput = useRef<HTMLInputElement>(null);
+    const openFile = async (f: File | undefined) => {
+        if (!f) return;
+        if (f.size > 5_000_000) { notify('File terlalu besar (maksimal 5 MB).'); return; }
+        let t = '';
+        try { t = await f.text(); } catch { notify('File tidak bisa dibaca.'); return; }
+        if (!t.trim()) { notify('File kosong.'); return; }
+        const ext = (f.name.split('.').pop() || '').toLowerCase();
+        setPrevCode(code); setReport(null);
+        if (split) {
+            const target: Lang = ext === 'css' ? 'css' : ext === 'js' || ext === 'mjs' ? 'js' : ext === 'html' || ext === 'htm' ? 'html' : lang;
+            setCode((c) => ({ ...c, [target]: t }));
+            setLang(target);
+        } else if (ext === 'css') {
+            setCode((c) => ({ ...c, css: t }));
+            setSplit(true); setLang('css');
+        } else setSimple(t);
+        onFileName(f.name);
+        notify(`${f.name} dimuat (${t.split('\n').length} baris).`);
     };
     const undo = () => { if (prevCode) { setCode(prevCode); setPrevCode(null); setReport(null); notify('Perubahan dibatalkan.'); } };
     const kind = !simpleValue.trim() ? '' : isHtml(simpleValue) ? 'HTML' : 'JavaScript';
@@ -134,6 +157,12 @@ export function EditorPane({ code, setCode, logs, clearLogs, onReload, onClear, 
                     <button className="ghost icon" onClick={runFormat} disabled={empty} aria-label="Rapikan indentasi" title="Rapikan indentasi">
                         <PixelIcon name="format" />
                     </button>
+                    <button className="ghost" onClick={() => fileInput.current?.click()} title="Buka file kode dari perangkat">
+                        <PixelIcon name="open" />
+                        <span className="ghost-txt">Buka file</span>
+                    </button>
+                    <input ref={fileInput} type="file" accept=".html,.htm,.js,.mjs,.css,.txt,.svg,text/html,text/javascript,text/css,text/plain" style={{ display: 'none' }}
+                        onChange={(e) => { void openFile(e.target.files?.[0]); e.target.value = ''; }} />
                     <button className="ghost" onClick={paste} title="Tempel dari clipboard">
                         <PixelIcon name="paste" />
                         Tempel
@@ -145,9 +174,9 @@ export function EditorPane({ code, setCode, logs, clearLogs, onReload, onClear, 
             </div>
 
             {split ? (
-                <CodeEditor lang={lang} value={code[lang]} onChange={(v) => { setReport(null); setCode((c) => ({ ...c, [lang]: v })); }} />
+                <CodeEditor lang={lang} value={code[lang]} onChange={(v) => { setReport(null); setPrevCode(null); setCode((c) => ({ ...c, [lang]: v })); }} />
             ) : (
-                <CodeEditor lang={isHtml(simpleValue) || !simpleValue.trim() ? 'html' : 'js'} value={simpleValue} onChange={(v) => { setReport(null); setSimple(v); }} />
+                <CodeEditor lang={isHtml(simpleValue) || !simpleValue.trim() ? 'html' : 'js'} value={simpleValue} onChange={(v) => { setReport(null); setPrevCode(null); setSimple(v); }} />
             )}
 
             {report && (
@@ -209,7 +238,7 @@ export function EditorPane({ code, setCode, logs, clearLogs, onReload, onClear, 
             </div>
             <div className="w95-btns ed-win-btns">
                 <button onClick={() => { setPrevCode(code); setReport(null); onClear(); }} disabled={empty} style={{ marginRight: 'auto' }}><PixelIcon name="trash" size={14} /> Hapus kode</button>
-                {prevCode && empty && <button onClick={undo}>Urungkan</button>}
+                {prevCode && !report && <button onClick={undo}>Urungkan</button>}
                 <button onClick={onReload}>Terapkan</button>
                 <button className="w95-def" onClick={() => setOpen(false)}>Selesai</button>
             </div>
